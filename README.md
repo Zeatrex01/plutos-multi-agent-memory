@@ -2,6 +2,8 @@
 
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue) ![Node.js 22+](https://img.shields.io/badge/node-22%2B-339933) ![MCP server](https://img.shields.io/badge/MCP-server-8b5cf6)
 
+**Website and downloads: [plut-os.malik3d.page](https://plut-os.malik3d.page)**
+
 PLUT_OS is the memory and hand-off layer between one owner and several AIs: a board, a session record, checks against a false "done", a working agreement in every brief, and a dashboard over the same files.
 It is a small local app for people who use more than one AI tool on the same project (Claude Code,
 Codex, Cursor, Gemini CLI, Antigravity, Windsurf, Zed, VS Code Copilot…): the AIs coordinate
