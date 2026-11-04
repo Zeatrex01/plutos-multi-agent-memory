@@ -36,7 +36,7 @@ export const PRIVATE = [
 // empty target gets them from tools/public-repo/ (same paths); an existing one is never overwritten.
 export const TARGET_OWN = [
     'docs/handoff/BOARD.md', 'docs/handoff/AGENT_BOARD.md', 'docs/handoff/ROSTER.md', 'docs/handoff/CONTINUITY.md',
-    '.github/workflows/ci.yml',
+    '.github/workflows/ci.yml', '.github/workflows/release.yml',
 ];
 // A finding of these kinds stops the publish. Turkish lines are expected (the Turkish UI strings).
 const BLOCKING = ['personal', 'secret', 'maps', 'terms'];

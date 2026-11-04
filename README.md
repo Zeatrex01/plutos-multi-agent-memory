@@ -96,6 +96,20 @@ they talk to it through MCP and files ("communication, not control").
 
 ## Quick start
 
+**Download and run (nothing to install):** open the latest
+[release](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases) and take the zip for
+your system:
+
+| File | For | Then |
+|---|---|---|
+| `PLUT_OS-<version>-windows-x64.zip` | Windows | unzip, double-click `PLUT_OS.exe` |
+| `PLUT_OS-<version>-linux-x64.zip` | Linux | unzip, run `./PLUT_OS` |
+| `PLUT_OS-<version>-lite.zip` | any system with Node.js 22+, macOS included | unzip, run `START_PLUT_OS.bat` or `./start-plutos.sh` |
+
+The dashboard opens at `http://localhost:3040`. The AI tools you connect still need Node.js 22+
+on the machine, because they start PLUT_OS's MCP server with it. Settings → Updates says when a
+newer release is out.
+
 **Windows, from source** (Node.js 22+ installed):
 
 1. Clone or download this repository.

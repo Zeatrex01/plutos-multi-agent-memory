@@ -1,0 +1,61 @@
+# Ready-to-run downloads for every release, so nobody has to install Node or build anything.
+#
+# Publishing a release on GitHub builds three packages from its tag and attaches them to it:
+#   windows-x64  PLUT_OS.exe without a console window (unzip, double-click)
+#   linux-x64    the PLUT_OS binary
+#   lite         one bundled file for any machine that already has Node.js 22+ (macOS included)
+# Run it by hand (Actions → Release builds → Run workflow) to build an existing release again.
+name: Release builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to build and attach to, e.g. v0.5.0-beta
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, package: windows-x64, flag: --windowed }
+          - { os: ubuntu-latest, package: linux-x64, flag: '' }
+          - { os: ubuntu-latest, package: lite, flag: --lite }
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: node build.mjs ${{ matrix.flag }}
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Rename-Item dist PLUT_OS
+          Compress-Archive -Path PLUT_OS -DestinationPath "PLUT_OS-$env:TAG-${{ matrix.package }}.zip"
+      - name: Zip
+        if: runner.os != 'Windows'
+        run: |
+          mv dist PLUT_OS
+          zip -qr "PLUT_OS-$TAG-${{ matrix.package }}.zip" PLUT_OS
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "PLUT_OS-$TAG-${{ matrix.package }}.zip" --clobber --repo "$GITHUB_REPOSITORY"
