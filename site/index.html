@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLUT_OS — shared memory for your AI coding tools</title>
+<meta name="description" content="One shared memory, task board and approval queue for Claude Code, Codex, Cursor, Gemini CLI and the other AI tools you use on one repository. Local, MCP, Apache-2.0.">
+<meta property="og:title" content="PLUT_OS — shared memory for your AI coding tools">
+<meta property="og:description" content="A board, a session record, checks against a false “done” and one approval queue, shared by every AI tool on your repository. Runs on your machine.">
+<meta property="og:image" content="images/board.png">
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #0b1120; --surface: #111a2e; --raised: #16213a; --border: #22304d; --border-2: #2d3e60;
+  --title: #eef1f7; --body: #a9b3c6; --muted: #8a96ab; --brand: #f2a541; --brand-dim: rgba(242,165,65,.14);
+  --on-brand: #1b1208; --ok: #4ade80;
+  --ui: -apple-system, "Segoe UI", system-ui, Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f4f2; --surface: #ffffff; --raised: #fbfbfa; --border: #e5e4e0; --border-2: #d6d5d0;
+    --title: #1b1c21; --body: #4c515b; --muted: #686d76; --brand: #b45309; --brand-dim: rgba(180,83,9,.10);
+    --on-brand: #ffffff; --ok: #15803d; color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--body); font: 16px/1.6 var(--ui); }
+a { color: var(--brand); }
+img { max-width: 100%; height: auto; display: block; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+header.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+header.top .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--title); text-decoration: none; font: 700 15px/1 var(--mono); letter-spacing: .08em; }
+.brand img { width: 30px; height: 30px; }
+nav { margin-left: auto; display: flex; gap: 20px; }
+nav a { color: var(--body); text-decoration: none; font-size: 14px; }
+nav a:hover { color: var(--title); }
+h1, h2, h3 { color: var(--title); line-height: 1.2; margin: 0 0 12px; }
+h1 { font-size: clamp(32px, 5vw, 52px); letter-spacing: -.02em; }
+h2 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -.01em; }
+h3 { font-size: 18px; }
+section { padding: 72px 0; border-bottom: 1px solid var(--border); }
+.kicker { font: 600 12px/1 var(--mono); letter-spacing: .14em; color: var(--brand); text-transform: uppercase; margin-bottom: 14px; }
+.lead { font-size: 18px; max-width: 720px; }
+.hero { padding: 64px 0 56px; }
+.hero .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 26px; }
+.chip { font: 500 12px/1 var(--mono); padding: 7px 10px; border: 1px solid var(--border-2); border-radius: 999px; color: var(--body); }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--border-2); color: var(--title); background: var(--surface); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.btn:hover { filter: brightness(1.06); }
+.shot { margin-top: 40px; border: 1px solid var(--border-2); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 28px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.card p { margin: 0; font-size: 15px; }
+.card .was { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.split { display: grid; gap: 32px; grid-template-columns: 1fr 1fr; align-items: start; margin-top: 28px; }
+.split figure { margin: 0; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+.framed { border: 1px solid var(--border-2); border-radius: 12px; overflow: hidden; }
+pre { background: var(--raised); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--title); margin: 0; }
+pre .stale { color: var(--brand); }
+.steps { counter-reset: s; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 28px; }
+.steps .card::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--brand-dim); color: var(--brand); font: 700 14px var(--mono); margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 15px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+td:first-child { color: var(--title); }
+td strong { color: var(--title); }
+.note { margin-top: 20px; padding: 16px 18px; border-left: 3px solid var(--brand); background: var(--brand-dim); border-radius: 0 10px 10px 0; font-size: 15px; }
+.downloads { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 28px; }
+.dl { display: flex; flex-direction: column; gap: 6px; }
+.dl.mine { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+.dl .for { font: 600 12px/1 var(--mono); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+.dl .size { font-size: 13px; color: var(--muted); }
+.dl .btn { margin-top: 12px; justify-content: center; }
+.dl .then { font-size: 14px; }
+code { font: 13px var(--mono); background: var(--raised); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; color: var(--title); }
+footer { padding: 36px 0 48px; font-size: 14px; color: var(--muted); }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+@media (max-width: 760px) {
+  nav { display: none; }
+  .split { grid-template-columns: 1fr; }
+  section { padding: 52px 0; }
+  table, thead, tbody, tr, th, td { display: block; }
+  thead { display: none; }
+  tr { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; }
+  td { border: 0; padding: 8px 14px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="mark.svg" alt="">PLUT_OS</a>
+    <nav>
+      <a href="#what">What it does</a>
+      <a href="#see">See it</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/Zeatrex01/plutos-multi-agent-memory">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div class="kicker">Multi-agent memory · local · MCP</div>
+      <h1>One shared memory and board<br>for all your AI coding tools</h1>
+      <p class="lead">Claude Code, Codex, Cursor, Gemini CLI and the rest each start every session blind.
+        PLUT_OS gives them one record on your repository: what was decided, what was checked, who works on
+        what, and a single queue for the questions only you should answer.</p>
+      <div class="chips">
+        <span class="chip" id="version">v0.5.0-beta</span>
+        <span class="chip">Apache-2.0</span>
+        <span class="chip">Runs on 127.0.0.1 only</span>
+        <span class="chip">No account, no telemetry</span>
+      </div>
+      <div class="actions">
+        <a class="btn primary" id="hero-download" href="#download">Download</a>
+        <a class="btn" href="https://github.com/Zeatrex01/plutos-multi-agent-memory">View the source</a>
+      </div>
+      <div class="shot"><img src="images/board.png" alt="The PLUT_OS board: Claude, Codex and Cursor on one project, each task with its owner and its check" width="2880" height="1800"></div>
+    </div>
+  </section>
+
+  <section id="what">
+    <div class="wrap">
+      <div class="kicker">What it does</div>
+      <h2>What goes wrong when several AIs share a codebase, and what PLUT_OS does instead</h2>
+      <div class="grid">
+        <div class="card"><div class="was">Every new session starts blind</div><h3>A brief at session start</h3>
+          <p>Each AI opens with one bounded briefing: the board, the decisions and the facts that still hold. It closes with a record the next AI reads, whichever tool it is.</p></div>
+        <div class="card"><div class="was">Notes go stale silently</div><h3>Facts tied to their source</h3>
+          <p>A fact is stored with the exact line it was read from. When that line changes, the fact is quarantined instead of being handed over as true.</p></div>
+        <div class="card"><div class="was">Tools overwrite each other</div><h3>One shared board</h3>
+          <p>Tasks are claimed, updated and finished on a board in your repository, with atomic, race-tested writes and per-entry revision checks.</p></div>
+        <div class="card"><div class="was">Five windows asking “may I?”</div><h3>One approval queue</h3>
+          <p>Questions that need you land in one place in the dashboard. Approvals are sealed to what was asked, expire and run once; editing a file cannot approve a ticket.</p></div>
+        <div class="card"><div class="was">“Done”, with no test run</div><h3>Checks against a false done</h3>
+          <p>A “done” goes back when the tests did not run or a test was edited in the same fix, and <code>plutos check</code> fails on records that cite files that are not there.</p></div>
+        <div class="card"><div class="was">Old setups leave trash behind</div><h3>An audit for older projects</h3>
+          <p><code>plutos audit</code> lists what earlier versions left in a project and what fixes each item; nothing is deleted, leftovers move into a folder you can restore from.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="see">
+    <div class="wrap">
+      <div class="kicker">See it on one project</div>
+      <h2>Three AIs, one record</h2>
+      <p class="lead">From a small demo project, <code>acme-notes</code>, where a script played three AIs through the same MCP calls a real AI tool makes.</p>
+      <div class="split">
+        <figure><div class="framed"><img src="images/approval.png" alt="An approval card: Codex asks whether to shorten the refresh token lifetime, with three options and Reject" width="800" height="708" loading="lazy"></div>
+          <figcaption>Codex reached a decision it should not make alone, so it asked. The question waits in the dashboard with the options it offered.</figcaption></figure>
+        <figure><div class="framed"><img src="images/report.png" alt="The Report page: recorded sessions, commits and the work in flight" width="2880" height="1800" loading="lazy"></div>
+          <figcaption>The Report page puts the sessions, what reached git and what is still in flight on one screen.</figcaption></figure>
+      </div>
+      <h3 style="margin-top:40px">Then the code changed</h3>
+      <p>Someone set the sync interval to 60 seconds. The next session's brief no longer hands the old fact over as true:</p>
+<pre>$ plutos memory list
+e9082043308751982b98e056  claim     <span class="stale">stale</span>     Sync runs every 30 seconds
+
+Shared context: 1 source-backed · 1 quarantined (evidence lost) claim(s) …</pre>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="kicker">How it works</div>
+      <h2>Plain files in your repo, and a local MCP server</h2>
+      <div class="steps">
+        <div class="card"><h3>Prepare</h3><p>Add a folder and PLUT_OS maps it without touching it. The project kit, installed only when you choose, writes the rules, the boards and a pointer for each AI tool. It never overwrites a file the project already has.</p></div>
+        <div class="card"><h3>Remember</h3><p>Each AI opens with <code>session_start</code> and closes with <code>session_end</code>. Decisions, facts with their evidence and where the work stopped carry over to the next session.</p></div>
+        <div class="card"><h3>Coordinate</h3><p>Tasks move across the shared board, questions go to the approval queue, and the dashboard shows who works on what. PLUT_OS does not drive the AIs; they talk to it.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="evidence">
+    <div class="wrap">
+      <div class="kicker">Evidence</div>
+      <h2>What has been measured, and how</h2>
+      <table>
+        <thead><tr><th>Claim</th><th>How it was measured</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Memory search answers from the record better than reading the brief and grepping</td><td>Three probe sets written blind of each other (86, 60 and 60 questions, half English, half Turkish) over 229 records of PLUT_OS's own development</td><td>The right record in the top 5: <strong>78.9% vs 61.3%</strong>, <strong>72.9% vs 62.5%</strong>, <strong>68.8% vs 54.2%</strong></td></tr>
+          <tr><td>It refuses a question nothing in the record answers</td><td>The same sets' false-premise questions</td><td>61%, 17% and 33% refused, against 6%, 0% and 0%. Better, and still uneven</td></tr>
+          <tr><td>A session's opening brief stays small</td><td>Token budget test on a fresh project</td><td><strong>728 tokens</strong></td></tr>
+          <tr><td>The rules cost less without doing worse</td><td>The same 6 tasks, 3 trials each, before and after the brief was cut</td><td>18/18 passed both times; tokens <strong>−5.6%</strong>, time <strong>−14%</strong></td></tr>
+          <tr><td>Two AIs writing at once lose nothing</td><td>Race tests: two MCP servers on one board; 16 processes × 25 roster entries</td><td>Zero lost updates</td></tr>
+          <tr><td>It works on a clean machine</td><td>Every test suite, by CI on Windows and Linux on every push</td><td>All pass</td></tr>
+        </tbody>
+      </table>
+      <div class="note"><strong>Not shown yet:</strong> a comparison of the same multi-AI project run with and without PLUT_OS, and use by people other than its author. On a project with only a handful of records, memory search answers fewer questions than the numbers above.</div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="kicker">Download</div>
+      <h2>Unzip and run. Nothing to install.</h2>
+      <p class="lead">Take the zip for your system from the <a id="release-link" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">latest release</a>. The dashboard opens at <code>http://localhost:3040</code>.</p>
+      <div class="downloads">
+        <div class="card dl" data-os="windows"><span class="for">Windows</span><h3>PLUT_OS.exe</h3>
+          <span class="then">Unzip, double-click <code>PLUT_OS.exe</code>.</span><span class="size" data-size></span>
+          <a class="btn primary" data-asset="windows-x64" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Download for Windows</a></div>
+        <div class="card dl" data-os="linux"><span class="for">Linux</span><h3>PLUT_OS</h3>
+          <span class="then">Unzip, run <code>./PLUT_OS</code>.</span><span class="size" data-size></span>
+          <a class="btn primary" data-asset="linux-x64" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Download for Linux</a></div>
+        <div class="card dl" data-os="mac"><span class="for">macOS · any system with Node.js 22+</span><h3>Lite</h3>
+          <span class="then">Unzip, run <code>./start-plutos.sh</code> (or <code>START_PLUT_OS.bat</code>).</span><span class="size" data-size></span>
+          <a class="btn primary" data-asset="lite" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Download lite</a></div>
+      </div>
+      <div class="note">The AI tools you connect start PLUT_OS's MCP server with Node.js, so they still need Node.js 22+ on the machine. Settings → Updates in the dashboard says when a newer release is out.</div>
+      <h3 style="margin-top:32px">From source</h3>
+<pre>git clone https://github.com/Zeatrex01/plutos-multi-agent-memory.git
+cd plutos-multi-agent-memory
+npm ci --omit=dev
+node dashboard.mjs --open</pre>
+      <p>The full guide, with every MCP tool, is in the <a href="https://github.com/Zeatrex01/plutos-multi-agent-memory/blob/main/docs/GUIDE.md">repository</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>PLUT_OS · Apache License 2.0 · built and maintained by Zeatrex</span>
+    <span><a href="https://github.com/Zeatrex01/plutos-multi-agent-memory">Source</a> · <a href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Releases</a> · <a href="https://github.com/Zeatrex01/plutos-multi-agent-memory/blob/main/SECURITY.md">Security</a></span>
+  </div>
+</footer>
+
+<script>
+// The download buttons point at the newest release's files, read from GitHub when the page opens,
+// so the page never needs editing for a new version. Without that answer they keep pointing at the
+// releases page.
+(function () {
+  var repo = 'Zeatrex01/plutos-multi-agent-memory';
+  var ua = navigator.userAgent;
+  var mine = /Windows/.test(ua) ? 'windows' : /Mac OS X|Macintosh/.test(ua) ? 'mac' : /Linux|X11/.test(ua) ? 'linux' : '';
+  if (mine) {
+    var card = document.querySelector('.dl[data-os="' + mine + '"]');
+    if (card) card.classList.add('mine');
+  }
+  var mb = function (n) { return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB'; };
+  fetch('https://api.github.com/repos/' + repo + '/releases?per_page=10')
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (list) {
+      var release = (list || []).filter(function (r) { return r && !r.draft && r.assets && r.assets.length; })[0];
+      if (!release) return;
+      document.getElementById('version').textContent = release.tag_name + (release.prerelease ? ' · pre-release' : '');
+      document.getElementById('release-link').href = release.html_url;
+      document.querySelectorAll('[data-asset]').forEach(function (a) {
+        var asset = release.assets.filter(function (x) { return x.name.indexOf('-' + a.dataset.asset + '.zip') > 0; })[0];
+        if (!asset) return;
+        a.href = asset.browser_download_url;
+        var size = a.parentNode.querySelector('[data-size]');
+        if (size) size.textContent = asset.name + ' · ' + mb(asset.size);
+      });
+      var hero = document.getElementById('hero-download');
+      var pick = mine === 'windows' ? 'windows-x64' : mine === 'linux' ? 'linux-x64' : mine === 'mac' ? 'lite' : '';
+      var target = pick && document.querySelector('[data-asset="' + pick + '"]');
+      if (target && target.href.indexOf('/download/') > 0) {
+        hero.href = target.href;
+        hero.textContent = 'Download for ' + (mine === 'windows' ? 'Windows' : mine === 'linux' ? 'Linux' : 'macOS (lite)');
+      }
+    })
+    .catch(function () { /* the buttons keep pointing at the releases page */ });
+})();
+</script>
+</body>
+</html>

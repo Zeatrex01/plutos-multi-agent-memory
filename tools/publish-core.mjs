@@ -36,7 +36,7 @@ export const PRIVATE = [
 // empty target gets them from tools/public-repo/ (same paths); an existing one is never overwritten.
 export const TARGET_OWN = [
     'docs/handoff/BOARD.md', 'docs/handoff/AGENT_BOARD.md', 'docs/handoff/ROSTER.md', 'docs/handoff/CONTINUITY.md',
-    '.github/workflows/ci.yml', '.github/workflows/release.yml',
+    '.github/workflows/ci.yml', '.github/workflows/release.yml', '.github/workflows/pages.yml',
 ];
 // A finding of these kinds stops the publish. Turkish lines are expected (the Turkish UI strings).
 const BLOCKING = ['personal', 'secret', 'maps', 'terms'];
@@ -44,7 +44,7 @@ const BLOCKING = ['personal', 'secret', 'maps', 'terms'];
 // About box and its links, and the main repository's own address (the clone line, the server's link).
 // Minified vendor files only match a term by chance.
 export const ATTRIBUTION = f => f.kind === 'terms' && (f.file === 'LICENSE' || f.file === 'NOTICE' || (f.file === 'package.json' && /"author"/.test(f.text)) || f.file.startsWith('ui/vendor/')
-    || /settings_about_desc|youtube\.com\/c\/Zeatrex\/|github\.com\/Zeatrex01"|github\.com\/Zeatrex01\/(?:Plut-os|plutos-multi-agent-memory)\b/.test(f.text));
+    || /settings_about_desc|youtube\.com\/c\/Zeatrex\/|github\.com\/Zeatrex01"|github\.com\/Zeatrex01\/(?:Plut-os|plutos-multi-agent-memory)\b|'Zeatrex01\/plutos-multi-agent-memory'|built and maintained by Zeatrex\b/.test(f.text));
 
 const SEEDS = 'tools/public-repo';
 const isPrivate = file => PRIVATE.some(p => p.endsWith('/') ? file.startsWith(p) : file === p);

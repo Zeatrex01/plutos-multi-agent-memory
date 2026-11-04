@@ -1,0 +1,40 @@
+# The project site on GitHub Pages: site/index.html, the README's screenshots and the mark.
+# Turn it on once in Settings → Pages → Source: GitHub Actions. The download buttons read the newest
+# release when the page opens, so a new release needs no new deploy.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'docs/images/**', 'assets/plutos-mark.svg', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/images
+          cp site/index.html _site/
+          cp docs/images/*.png _site/images/
+          cp assets/plutos-mark.svg _site/mark.svg
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
