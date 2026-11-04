@@ -1,0 +1,53 @@
+# The suite was only ever run by hand, which is the same as not having it: the one thing a
+# test suite is for is catching what the person who wrote the change did not think to re-run.
+#
+# Two platforms, both real: Windows is the first-class install story (portable .exe,
+# PLUT_OS.bat), Linux is where the POSIX launcher and exec-bit assertions actually mean
+# something — a break on either side has already shipped once because only the other ran.
+name: CI
+
+# Push runs only on main (work lands there directly; a pull request gets its own run), and a
+# newer push cancels the older run.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    # The last passing runs (2026-10-25) took 8.6 minutes on Windows and 3.6 on Ubuntu. Each suite
+    # also has its own 10-minute limit (tools/run-all-tests.mjs); this one stops anything else
+    # that hangs, well before GitHub's six-hour default spends the month's minutes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Doc drift and the status report read commit history; a shallow clone would make
+          # them silently report "nothing to compare against" instead of failing loudly.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # git identity: the drift fixture creates its own repo and commits into it.
+      - name: Configure git for test fixtures
+        run: |
+          git config --global user.email "ci@plutos.test"
+          git config --global user.name "PLUT_OS CI"
+
+      - run: npm ci
+
+      - name: Smoke suite
+        run: npm test
+

@@ -1,0 +1,47 @@
+{
+ "humanName": "Owner",
+ "moderator": "claude",
+ "maxRounds": 2,
+ "departments": {
+  "research": {
+   "label": "Research",
+   "role": "Researcher",
+   "seat": "codex",
+   "kind": "research",
+   "color": "#10a37f",
+   "reads": []
+  },
+  "design": {
+   "label": "Design",
+   "role": "Designer",
+   "seat": "gemini",
+   "kind": "design",
+   "color": "#4f7cff",
+   "reads": []
+  },
+  "critique": {
+   "label": "Critique",
+   "role": "Blind reviewer",
+   "seat": "codex",
+   "kind": "critique",
+   "color": "#d9822b",
+   "reads": []
+  }
+ },
+ "seats": {
+  "codex": {
+   "runner": "codex",
+   "label": "Codex",
+   "command": "codex",
+   "model": "gpt-6-astra",
+   "timeoutMs": 900000
+  },
+  "gemini": {
+   "runner": "agy",
+   "label": "Gemini (Antigravity)",
+   "command": "agy",
+   "model": "gemini-3.8-flash-high",
+   "timeoutMs": 1800000
+  }
+ }
+}

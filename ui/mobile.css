@@ -1,0 +1,28 @@
+/* Phone layout: a short list of what is worth checking away from the desk — the
+   coordination board, live activity, the report and project switching. The
+   desktop-only tools (maps, library, setup, council) stay on the desktop.
+   Breakpoint matches the bottom-nav switch in styles.css. */
+@media (max-width: 860px) {
+    /* Navigation: keep the daily loop, drop the rest. Matched on the tab's own onclick so the
+       list lives here, next to the reason for it, not scattered across dashboard-ui.html. */
+    .sidebar .nav-group,
+    .sidebar .tab-btn:not([onclick*="'research'"]):not([onclick*="'board'"]):not([onclick*="'report'"]):not([onclick*="'overview'"]):not([onclick*="'hub-view'"]):not([onclick*="'settings'"]) { display: none !important; }
+
+    /* Top bar: project, MCP state and the two toggles; branch, AIs and clock are desktop detail. */
+    .system-bar .sys-item.dim, .system-bar #sys-activity, .system-bar #sys-participants, .system-bar #sys-clock { display: none !important; }
+
+    /* Project hub: switch projects and glance at activity. AI connections write config on this
+       machine, and adding a project is refused remotely anyway. */
+    #connect-section { display: none !important; }
+}
+
+/* The map pages (Code map, Documents, Dependency graph) put the map and its side list in one row;
+   on a phone that left the map about 90 px wide, so they stack there (Job 18). */
+@media (max-width: 860px) {
+    #codeindex-container, #dochub-main-container { flex-direction: column !important; height: auto !important; }
+    #codeindex-graph, #dochub-graph { flex: none !important; height: 600px !important; }
+    #codeindex-sidebar, #dochub-sidebar { flex: none !important; height: auto !important; }
+    #codeindex-systems { max-height: 320px; }
+    #dochub-sidebar > div { flex: none !important; max-height: 420px; }
+    #graphify-studio-canvas-container { height: 560px !important; }
+}

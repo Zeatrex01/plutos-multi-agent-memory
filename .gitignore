@@ -1,0 +1,33 @@
+# Dependencies, logs, local secrets
+node_modules/
+*.log
+.env
+.env.*
+!.env.example
+
+# Build output (npm run build, tools/make-research-mcp.mjs)
+dist/
+dist-research-mcp/
+
+# PLUT_OS machine-local state: workspace paths, the memory index, agent working folders
+.plutos/
+/.agents/
+
+# Generated on each machine by the code scan; committed, they go stale
+graphify-out/
+docs/ai/CODEINDEX.md
+docs/ai/codeindex/
+docs/ai/obsidian/
+docs/ai/OBSIDIAN_INDEX.md
+
+# Coordination-file writer leftovers (lib/atomic.mjs): mutex folders, temp files, stale-lock tombstones
+docs/handoff/*.lock/
+docs/handoff/*.tmp
+*.lock.stale.*/
+
+# AI client local files: per-machine settings, worktrees, skills a user installs into this checkout
+.claude/settings.json
+.claude/settings.local.json
+.claude/worktrees/
+.claude/skills/
+.cursor/

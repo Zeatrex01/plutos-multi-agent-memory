@@ -1,0 +1,38 @@
+{
+  "name": "plut-os",
+  "version": "0.5.0-beta",
+  "description": "Portable local PC app for shared AI project memory and coordination (dashboard + Coordinator MCP)",
+  "main": "index.mjs",
+  "bin": {
+    "plutos": "./cli.mjs"
+  },
+  "scripts": {
+    "dev": "node dashboard.mjs --dev --auto-port --open",
+    "test": "node lib/push-gate.mjs run node tools/run-all-tests.mjs",
+    "build": "node build.mjs",
+    "build:app": "node build.mjs --windowed",
+    "build:lite": "node build.mjs --lite",
+    "graphify": "node -e \"import('./lib/graphify.mjs').then(m => { const r = m.buildProjectDocGraph(process.cwd(), process.argv[1] || 'code'); console.log(r.message); process.exit(r.success ? 0 : 1); })\""
+  },
+  "keywords": [],
+  "author": "Zeatrex",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zeatrex01/plutos-multi-agent-memory.git"
+  },
+  "homepage": "https://github.com/Zeatrex01/plutos-multi-agent-memory",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "postject": "^1.0.0-alpha.6",
+    "resedit": "3.1.0"
+  }
+}

@@ -1,0 +1,114 @@
+/* Shared Table: offices side by side, a flow bar on top, the shared table and the conversation below.
+   Cards, buttons, fields, pills and empty states are the shared set in styles.css; this file holds
+   only what is particular to a room: the department colour (--dept), the flow bar and the skeleton. */
+.council-view { --cn-ok: var(--status-done); --cn-work: var(--status-progress); --cn-wait: var(--text-muted); --cn-fail: var(--status-error); --cn-gold: var(--brand-primary); }
+.cn-avatar { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; flex:none; color:#fff; font:700 12px var(--font-mono); background:var(--dept, #64748b); }
+
+/* overview */
+.cn-room-card { display:flex; flex-direction:column; gap:10px; text-align:left; cursor:pointer; color:var(--text-title); font:13px var(--font-ui); width:100%; transition:border-color .15s; }
+.cn-room-card:hover { border-color:var(--brand-primary); }
+.cn-room-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.cn-room-top strong { font-size:16px; line-height:1.3; }
+.cn-progress { display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; }
+.cn-progress i { height:5px; border-radius:3px; background:var(--border-subtle); }
+.cn-progress i.on { background:var(--brand-primary); }
+.cn-room-card small { color:var(--text-body); font-size:12px; }
+.cn-room-desks { display:flex; flex-wrap:wrap; gap:6px; }
+.cn-room-desks > .pill { border:1px solid color-mix(in srgb, var(--dept) 45%, transparent); background:color-mix(in srgb, var(--dept) 14%, transparent); color:var(--text-title); font-weight:500; font-size:12px; }
+.cn-dot { width:7px; height:7px; border-radius:50%; background:var(--cn-wait); }
+.cn-dot-working { background:var(--cn-work); animation:cn-blink 1s ease-in-out infinite; }
+.cn-dot-delivered { background:var(--cn-ok); }
+.cn-dot-failed { background:var(--cn-fail); }
+.cn-room-decision { color:var(--text-body); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; padding-top:10px; border-top:1px dashed var(--border-subtle); }
+.cn-room-decision b { color:var(--cn-gold); }
+
+/* room */
+.cn-room { display:flex; flex-direction:column; gap:18px; }
+.cn-topbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
+.cn-topbar h3 { margin:0; font-size:20px; letter-spacing:-.3px; color:var(--text-title); flex:1; min-width:180px; overflow-wrap:anywhere; }
+.cn-topbar .card-link { margin-left:0; }
+.cn-topbar .seg-control { margin:0; }
+.cn-live { display:inline-flex; align-items:center; gap:6px; font:11px var(--font-mono); color:var(--text-body); }
+.cn-live i { width:7px; height:7px; border-radius:50%; background:var(--cn-wait); }
+.cn-live.on i { background:var(--cn-ok); box-shadow:0 0 0 0 var(--cn-ok); animation:cn-ping 1.8s infinite; }
+.cn-brief { margin:0; padding:12px 16px; }
+.cn-brief summary { cursor:pointer; font:600 11px var(--font-mono); letter-spacing:1.2px; text-transform:uppercase; color:var(--brand-primary); }
+.cn-brief[open] summary { margin-bottom:6px; }
+
+.cn-flow { list-style:none; margin:0; padding:16px 10px; display:grid; grid-template-columns:repeat(5, 1fr); }
+.cn-flow li { position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; gap:4px; padding:0 6px; color:var(--text-body); }
+.cn-flow li::before { content:''; position:absolute; top:15px; left:-50%; width:100%; height:2px; background:var(--border-subtle); z-index:0; }
+.cn-flow li:first-child::before { display:none; }
+.cn-flow li.done::before, .cn-flow li.now::before { background:var(--brand-primary); }
+.cn-node { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:var(--bg-primary); border:2px solid var(--border-subtle); font:700 12px var(--font-mono); }
+.cn-flow li.done .cn-node { background:var(--brand-primary); border-color:var(--brand-primary); color:var(--on-brand); }
+.cn-flow li.now .cn-node { border-color:var(--brand-primary); color:var(--brand-primary); box-shadow:0 0 0 5px color-mix(in srgb, var(--brand-primary) 18%, transparent); }
+.cn-flow strong { font-size:12.5px; color:var(--text-title); }
+.cn-flow li:not(.done):not(.now) strong { color:var(--text-body); font-weight:500; }
+.cn-flow small { font-size:11px; line-height:1.35; }
+
+.cn-section-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-bottom:10px; }
+.cn-section-head h4 { margin:0; font:600 11px var(--font-mono); letter-spacing:1.4px; text-transform:uppercase; color:var(--text-title); }
+.cn-section-head .seg-bar { margin:0; }
+.cn-hint { font-size:12px; color:var(--text-body); flex:1; }
+.cn-seat-line { margin:0 0 14px; }
+.cn-seat-line code { font:12px var(--font-mono); overflow-wrap:anywhere; }
+
+.cn-offices { display:grid; grid-template-columns:repeat(var(--cols, 2), minmax(0, 1fr)); gap:14px; }
+.cn-office { display:flex; flex-direction:column; min-width:0; background:var(--bg-surface); border:1px solid var(--border-subtle); border-top:4px solid var(--dept); border-radius:10px; overflow:hidden; }
+.cn-office-head { display:flex; align-items:center; gap:12px; padding:14px 16px; background:color-mix(in srgb, var(--dept) 8%, var(--bg-surface)); border-bottom:1px solid var(--border-subtle); }
+.cn-office-head div { flex:1; min-width:0; }
+.cn-office-head h4 { margin:0; font-size:15px; color:var(--text-title); }
+.cn-office-head small { color:var(--text-body); font-size:12px; }
+.cn-office-body { display:flex; flex-direction:column; gap:10px; padding:14px 16px; min-height:120px; }
+
+.cn-card > header { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; }
+.cn-card time, .cn-msg time { font:11px var(--font-mono); color:var(--text-body); }
+.cn-kind { font:600 10.5px var(--font-mono); letter-spacing:.6px; text-transform:uppercase; padding:3px 8px; border-radius:6px; color:#fff; background:var(--text-body); }
+.cn-kind-research { background:#10a37f; } .cn-kind-design { background:#4f7cff; } .cn-kind-critique { background:#c4733a; }
+.cn-kind-consolidation { background:#7c6bd6; } .cn-kind-decision { background:var(--cn-gold); color:var(--on-brand); }
+.cn-lock { font:600 11px var(--font-ui); color:var(--cn-wait); margin-left:auto; }
+.cn-md { font-size:13.5px; line-height:1.6; color:var(--text-title); overflow-wrap:anywhere; }
+.cn-md p { margin:0 0 6px; } .cn-md ul { margin:0 0 6px; padding-left:18px; } .cn-md li { margin:2px 0; }
+.cn-md h5 { margin:8px 0 4px; font-size:13px; color:var(--text-title); }
+.cn-md code { font:12px var(--font-mono); background:var(--bg-surface); padding:1px 5px; border-radius:4px; }
+.cn-md a { color:var(--brand-primary); }
+.cn-clamped { max-height:220px; overflow:hidden; -webkit-mask-image:linear-gradient(#000 70%, transparent); mask-image:linear-gradient(#000 70%, transparent); }
+.cn-card .card-link { margin-left:0; padding-top:4px; }
+.cn-files { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.cn-files img { max-width:160px; max-height:110px; border-radius:8px; border:1px solid var(--border-subtle); }
+.cn-file { font:12px var(--font-mono); color:var(--brand-primary); padding:4px 8px; border:1px solid var(--border-subtle); border-radius:6px; }
+
+.cn-skeleton { display:flex; flex-direction:column; gap:8px; padding:6px 0; }
+.cn-skeleton i { height:10px; border-radius:6px; background:linear-gradient(90deg, var(--border-subtle), color-mix(in srgb, var(--dept) 25%, var(--border-subtle)), var(--border-subtle)); background-size:200% 100%; animation:cn-shimmer 1.4s linear infinite; }
+.cn-skeleton i:nth-child(2) { width:80%; } .cn-skeleton i:nth-child(3) { width:55%; }
+.cn-skeleton span { font-size:12px; color:var(--text-body); margin-top:4px; }
+
+.cn-lower { display:grid; grid-template-columns:minmax(0, 1.2fr) minmax(0, 1fr); gap:14px; align-items:start; }
+.cn-table, .cn-talk { display:flex; flex-direction:column; gap:10px; margin:0; }
+.cn-table { border-top:4px solid var(--cn-gold); }
+.cn-decision { border-color:var(--cn-gold); background:color-mix(in srgb, var(--cn-gold) 7%, var(--bg-primary)); }
+.cn-msg { display:flex; gap:10px; align-items:flex-start; }
+.cn-msg .cn-avatar { width:28px; height:28px; border-radius:50%; font-size:10px; }
+.cn-msg > div { min-width:0; font-size:13px; color:var(--text-title); }
+.cn-msg > div p { margin:2px 0 0; line-height:1.5; }
+.cn-composer { display:flex; gap:8px; margin-top:4px; }
+.cn-composer textarea { flex:1; }
+
+@keyframes cn-blink { 50% { opacity:.35; } }
+@keyframes cn-shimmer { to { background-position:-200% 0; } }
+@keyframes cn-ping { 70% { box-shadow:0 0 0 6px transparent; } 100% { box-shadow:0 0 0 0 transparent; } }
+@media (max-width: 980px) { .cn-lower { grid-template-columns:1fr; } }
+@media (max-width: 760px) {
+    .cn-offices { grid-template-columns:1fr; }
+    .cn-flow { grid-template-columns:1fr; gap:10px; padding:14px; }
+    .cn-flow li { flex-direction:row; text-align:left; gap:10px; }
+    .cn-flow li::before { display:none; }
+    .cn-flow small { display:none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cn-dot-working, .cn-skeleton i, .cn-live.on i { animation:none; }
+    .cn-room-card { transition:none; }
+}
+/* An office that failed: its message in the error colour. */
+.cn-fail { color: var(--status-error); }

@@ -1,0 +1,224 @@
+<title>PLUT_OS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one tall card on a quiet ground; a drawn hand-off diagram opens it, then short, labelled sections. */
+:root {
+  --bg: #eef1f4; --card: #ffffff; --fg: #182230; --muted: #5c6a7a; --line: #d6dde5;
+  --accent: #0f6e56; --accent-soft: #dcefe7; --ink: #223447; --mono-bg: #f3f6f8;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1419; --card: #171d25; --fg: #e8edf2; --muted: #9aa8b6; --line: #2a3440;
+  --accent: #5fd0a8; --accent-soft: #15302a; --ink: #c9d4df; --mono-bg: #10151b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1419; --card: #171d25; --fg: #e8edf2; --muted: #9aa8b6; --line: #2a3440;
+  --accent: #5fd0a8; --accent-soft: #15302a; --ink: #c9d4df; --mono-bg: #10151b; color-scheme: dark; }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px; }
+.card { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.top strong { color: var(--fg); font-weight: 500; letter-spacing: .04em; }
+.lang { display: flex; gap: 4px; }
+.lang button { font: inherit; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.lang button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.lang button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+section { padding: 26px 22px; border-bottom: 1px solid var(--line); }
+section:last-of-type { border-bottom: 0; }
+h1 { font-family: var(--display); font-size: clamp(30px, 5vw, 44px); line-height: 1.05; margin: 0 0 10px; font-weight: 700; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--display); font-size: 20px; margin: 0 0 14px; font-weight: 700; text-wrap: balance; }
+p { margin: 0 0 10px; max-width: 62ch; }
+.lead { font-size: 17px; color: var(--ink); max-width: 56ch; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.diagram { margin: 18px 0 4px; }
+.diagram svg { width: 100%; height: auto; display: block; max-width: 100%; }
+.diagram text { font-family: var(--mono); font-size: 11.5px; fill: var(--fg); }
+.diagram .lbl { fill: var(--muted); font-size: 10.5px; }
+.diagram .box { fill: var(--card); stroke: var(--line); stroke-width: 1.2; }
+.diagram .hub { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+.diagram .wire { fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 5 4; animation: flow 1.6s linear infinite; }
+.diagram .wire.back { animation-direction: reverse; stroke: var(--accent); }
+@keyframes flow { to { stroke-dashoffset: -18; } }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.two h3 { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+ul { margin: 0; padding-left: 18px; }
+li { margin: 0 0 6px; }
+.parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.part { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.part b { display: block; font-weight: 600; margin-bottom: 3px; }
+.part small { color: var(--muted); display: block; }
+.part code { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.session { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; counter-reset: step; }
+.step { border-left: 3px solid var(--line); padding: 6px 12px; min-width: 0; transition: border-color .4s, background .4s; border-radius: 0 8px 8px 0; }
+.step.on { border-left-color: var(--accent); background: var(--accent-soft); }
+.step b { display: block; font-family: var(--mono); font-size: 12px; margin-bottom: 4px; }
+.step span { font-size: 13.5px; color: var(--ink); }
+pre { background: var(--mono-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; overflow-x: auto; margin: 0; }
+pre b { color: var(--accent); font-weight: 500; }
+.evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.num { font-family: var(--display); font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.num + small { display: block; color: var(--muted); margin-top: 4px; }
+.not { background: var(--mono-bg); border-radius: 10px; padding: 14px 16px; }
+footer { padding: 14px 22px; font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 18px; }
+@media (prefers-reduced-motion: reduce) { .diagram .wire { animation: none; } .step { transition: none; } }
+</style>
+
+<div class="card">
+  <div class="top"><strong>PLUT_OS · 0.5.0-beta</strong>
+    <div class="lang" role="group" aria-label="Language"><button type="button" id="lang-en" aria-pressed="true">EN</button><button type="button" id="lang-tr" aria-pressed="false">TR</button></div>
+  </div>
+
+  <section>
+    <div class="eyebrow" data-i18n="eyebrow">Shared memory for several AIs on one project</div>
+    <h1 data-i18n="h1">The project does not break between sessions.</h1>
+    <p class="lead" data-i18n="lead">PLUT_OS is the memory and hand-off layer between one owner and the AIs that work on one project (Claude Code, Codex, Gemini, Cursor). Every AI reads the same record when it starts, takes its task from the same board, and writes back what it decided when it stops. Checks in code refuse a false "done".</p>
+    <div class="diagram" aria-hidden="true">
+      <svg viewBox="0 0 760 250" role="img">
+        <rect class="box" x="20" y="95" width="130" height="60" rx="8"/>
+        <text x="85" y="121" text-anchor="middle">Owner</text>
+        <text x="85" y="138" text-anchor="middle" class="lbl" data-i18n="d-owner">asks, watches the board</text>
+        <rect class="hub" x="290" y="55" width="180" height="140" rx="10"/>
+        <text x="380" y="82" text-anchor="middle" data-i18n="d-record">docs/handoff/</text>
+        <text x="380" y="104" text-anchor="middle" class="lbl">BOARD.md</text>
+        <text x="380" y="121" text-anchor="middle" class="lbl">CONTINUITY.md</text>
+        <text x="380" y="138" text-anchor="middle" class="lbl">CONTEXT.json</text>
+        <text x="380" y="155" text-anchor="middle" class="lbl">ROSTER.md</text>
+        <text x="380" y="180" text-anchor="middle" class="lbl" data-i18n="d-git">in git, plain text</text>
+        <rect class="box" x="610" y="20" width="130" height="50" rx="8"/>
+        <text x="675" y="50" text-anchor="middle">Claude Code</text>
+        <rect class="box" x="610" y="100" width="130" height="50" rx="8"/>
+        <text x="675" y="130" text-anchor="middle">Codex</text>
+        <rect class="box" x="610" y="180" width="130" height="50" rx="8"/>
+        <text x="675" y="210" text-anchor="middle">Gemini · Cursor</text>
+        <path class="wire" d="M150 118 C 220 118, 220 118, 290 118"/>
+        <path class="wire back" d="M150 132 C 220 132, 220 132, 290 132"/>
+        <path class="wire" d="M470 100 C 540 100, 540 45, 610 45"/>
+        <path class="wire back" d="M470 125 C 540 125, 540 125, 610 125"/>
+        <path class="wire" d="M470 150 C 540 150, 540 205, 610 205"/>
+        <text x="220" y="108" text-anchor="middle" class="lbl" data-i18n="d-assign">assign</text>
+        <text x="220" y="150" text-anchor="middle" class="lbl" data-i18n="d-see">see result</text>
+        <text x="540" y="86" text-anchor="middle" class="lbl" data-i18n="d-start">session_start</text>
+        <text x="540" y="172" text-anchor="middle" class="lbl" data-i18n="d-end">session_end</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <div class="two">
+      <div><h3 data-i18n="is-h">What it is</h3>
+        <ul>
+          <li data-i18n="is-1">A plain-text record every AI reads at the start and writes at the end: decisions, open work, what was not checked.</li>
+          <li data-i18n="is-2">A board where a task changes hands with the receiver named, what it needs, and what will show it is done.</li>
+          <li data-i18n="is-3">Checks that hold without the AI's goodwill: a push is refused until the tests passed on that tree; a "done" is checked against git; stale claims in the documents are flagged.</li>
+          <li data-i18n="is-4">The owner's rules in one file, delivered with every brief.</li>
+        </ul></div>
+      <div><h3 data-i18n="not-h">What it is not</h3>
+        <ul>
+          <li data-i18n="not-1">Not something that makes an AI cleverer. The models already know the work; measured, a library of skills added nothing over the rules.</li>
+          <li data-i18n="not-2">Not an agent runtime. It starts nothing; the owner opens each AI.</li>
+          <li data-i18n="not-3">Not a control plane. Preparation and visibility, not permission.</li>
+          <li data-i18n="not-4">Not a website. A local app on the owner's machine, with the record in the project's own git.</li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-i18n="parts-h">What is inside</h2>
+    <div class="parts">
+      <div class="part"><b data-i18n="p1">Record</b><small data-i18n="p1s">CONTINUITY.md holds settled decisions and the last sessions; CONTEXT.json holds claims with their source and exact excerpt, so nothing is trusted on a plain sentence.</small><code>session_start · session_end</code></div>
+      <div class="part"><b data-i18n="p2">Board</b><small data-i18n="p2s">Assignments with assignee, needs and a "done when" line; an entry with one cannot close without a recorded check.</small><code>board_update · board_read</code></div>
+      <div class="part"><b data-i18n="p3">Checks</b><small data-i18n="p3s">plutos check, the push gate, the claim check at the end of a session, every suite in tools/run-all-tests.mjs.</small><code>plutos check · npm test</code></div>
+      <div class="part"><b data-i18n="p4">Working agreement</b><small data-i18n="p4s">Play the request back, object with evidence, climb before you code, surgical changes, evidence before claims.</small><code>WORKING_AGREEMENT.md</code></div>
+      <div class="part"><b data-i18n="p5">Maps</b><small data-i18n="p5s">A code index and a dependency graph of the project, and a document map, so a task starts from the right files.</small><code>plutos_context_for_task</code></div>
+      <div class="part"><b data-i18n="p6">Dashboard</b><small data-i18n="p6s">The same files, readable at a glance: a BLOCKED entry, an unverified DONE or a missing hook shows without opening a session. Red means a fault only.</small><code>localhost</code></div>
+      <div class="part"><b data-i18n="p7">Council</b><small data-i18n="p7s">Several AIs at one table with opposing briefs; the ruling and why are recorded.</small><code>node tools/council.mjs</code></div>
+      <div class="part"><b data-i18n="p8">Research tool</b><small data-i18n="p8s">Fetch and read sources into a written brief under .plutos/research/&lt;topic&gt;/brief.md.</small><code>research_fetch</code></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-i18n="sess-h">How a session goes</h2>
+    <div class="session" id="session">
+      <div class="step on"><b>1 · session_start</b><span data-i18n="s1">The brief: decisions, open work, the owner's rules, where the last session stopped.</span></div>
+      <div class="step"><b>2 · board_update</b><span data-i18n="s2">Claim the task; write what will show it is done.</span></div>
+      <div class="step"><b>3 · work</b><span data-i18n="s3">The AI's own tools. PLUT_OS does nothing here.</span></div>
+      <div class="step"><b>4 · npm test</b><span data-i18n="s4">The push gate records the tree the tests passed on.</span></div>
+      <div class="step"><b>5 · session_end</b><span data-i18n="s5">What was done, decided, verified and not checked, with sources; one plain sentence for the owner.</span></div>
+      <div class="step"><b>6 · stop</b><span data-i18n="s6">The claim check reads the last message against git; a false "done" is sent back once.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-i18n="start-h">Start in three steps</h2>
+    <pre><b data-i18n="c1"># 1. one install per machine</b>
+git clone &lt;PLUT_OS&gt; &amp;&amp; cd PLUT_OS &amp;&amp; npm install
+node dashboard.mjs --open        <b data-i18n="c1b"># or START_PLUT_OS.bat</b>
+
+<b data-i18n="c2"># 2. one kit per project (AGENTS.md, docs/handoff/, the launcher)</b>
+node cli.mjs init /path/to/project
+
+<b data-i18n="c3"># 3. connect an AI; it runs session_start on its own</b>
+node cli.mjs connect claude-code   <b data-i18n="c3b"># codex, gemini, cursor</b></pre>
+  </section>
+
+  <section>
+    <h2 data-i18n="ev-h">What has been measured</h2>
+    <div class="evidence">
+      <div><div class="num">72/72</div><small data-i18n="e1">questions about the project's decisions and open work answered right by a fresh AI given the record</small></div>
+      <div><div class="num">−16%</div><small data-i18n="e2">tokens with the rules in the brief instead of installed skills, same results, blind</small></div>
+      <div><div class="num">4,011</div><small data-i18n="e3">tokens for the whole tool list a session loads, down from 4,706</small></div>
+      <div><div class="num">0</div><small data-i18n="e4">measured cost of the checks; and 0 false "done" caught so far, because none occurred in 16 honest trials</small></div>
+    </div>
+    <p class="not" style="margin-top:14px" data-i18n="ev-note">Not claimed: that the brief beats an AI opening the record itself, that any non-Claude AI has closed a board item unreminded, or that the owner's time goes down. Those are the next things to find out, on real work.</p>
+  </section>
+
+  <footer><span>0.5.0-beta · 2026-10-29</span><span data-i18n="f1">Local, private, Node ≥ 22, one dependency</span><span data-i18n="f2">Record and board live in the project's own git</span></footer>
+</div>
+
+<script>
+(function () {
+  var tr = {
+    eyebrow: "Bir projede birden fazla AI için ortak hafıza",
+    h1: "Proje oturumlar arasında kopmaz.",
+    lead: "PLUT_OS, bir sahip ile aynı projede çalışan AI'lar (Claude Code, Codex, Gemini, Cursor) arasındaki hafıza ve devir katmanıdır. Her AI başlarken aynı kaydı okur, görevini aynı board'dan alır, dururken ne karar verdiğini geri yazar. Koddaki kontroller sahte \"bitti\"yi reddeder.",
+    "d-owner": "ister, board'u izler", "d-record": "docs/handoff/", "d-git": "git'te, düz metin", "d-assign": "görev ver", "d-see": "sonucu gör", "d-start": "session_start", "d-end": "session_end",
+    "is-h": "Nedir", "is-1": "Her AI'nın başta okuyup sonda yazdığı düz metin bir kayıt: kararlar, açık işler, kontrol edilmeyenler.", "is-2": "İşin el değiştirdiği bir board: kime, neyle, ne olunca bitmiş sayılır.", "is-3": "AI'nın iyi niyetine bağlı olmayan kontroller: testler o ağaçta geçmeden push reddedilir; \"bitti\" git'e karşı denetlenir; dokümanlardaki bayat iddialar işaretlenir.", "is-4": "Sahibin kuralları tek dosyada, her brief'le birlikte.",
+    "not-h": "Ne değildir", "not-1": "AI'yı daha zeki yapan bir şey değil. Modeller işi zaten biliyor; ölçüldü, bir skill kütüphanesi kurallara hiçbir şey eklemedi.", "not-2": "Ajan çalıştırıcı değil. Hiçbir şeyi başlatmaz; her AI'yı sahip açar.", "not-3": "Kontrol katmanı değil. Hazırlık ve görünürlük, izin değil.", "not-4": "Web sitesi değil. Sahibin makinesinde yerel bir uygulama; kayıt projenin kendi git'inde.",
+    "parts-h": "İçinde ne var",
+    p1: "Kayıt", p1s: "CONTINUITY.md yerleşik kararları ve son oturumları tutar; CONTEXT.json iddiaları kaynağı ve tam alıntısıyla tutar, düz cümleye güvenilmez.",
+    p2: "Board", p2s: "Atanan, gereken ve \"bitti tanımı\" satırıyla görevler; tanımı olan bir kayıt, kontrol sonucu yazılmadan kapanamaz.",
+    p3: "Kontroller", p3s: "plutos check, push gate, oturum sonunda claim check, tools/run-all-tests.mjs içindeki her test paketi.",
+    p4: "Çalışma anlaşması", p4s: "İsteği geri söyle, kanıtla itiraz et, kodlamadan önce tırman, cerrahi değişiklik, iddiadan önce kanıt.",
+    p5: "Haritalar", p5s: "Projenin kod indeksi ve bağımlılık grafiği, bir de doküman haritası; iş doğru dosyalardan başlar.",
+    p6: "Panel", p6s: "Aynı dosyalar, bir bakışta: BLOCKED bir kayıt, doğrulanmamış bir DONE ya da eksik bir hook oturum açmadan görünür. Kırmızı yalnızca arıza demektir.",
+    p7: "Konsey", p7s: "Karşıt brief'lerle birden fazla AI aynı masada; karar ve gerekçesi kaydedilir.",
+    p8: "Araştırma aracı", p8s: "Kaynakları çekip okuyarak .plutos/research/<topic>/brief.md altına yazılı bir brief çıkarır.",
+    "sess-h": "Bir oturum nasıl geçer",
+    s1: "Brief: kararlar, açık işler, sahibin kuralları, son oturumun kaldığı yer.", s2: "Görevi al; ne olunca bitmiş sayılacağını yaz.", s3: "AI'nın kendi araçları. PLUT_OS burada hiçbir şey yapmaz.", s4: "Push gate, testlerin geçtiği ağacı kaydeder.", s5: "Yapılan, karar verilen, doğrulanan ve kontrol edilmeyen, kaynaklarıyla; sahip için tek düz cümle.", s6: "Claim check son mesajı git'e karşı okur; sahte bir \"bitti\" bir kez geri gönderilir.",
+    "start-h": "Üç adımda başla", c1: "# 1. makine başına bir kurulum", c1b: "# ya da START_PLUT_OS.bat", c2: "# 2. proje başına bir kit (AGENTS.md, docs/handoff/, başlatıcı)", c3: "# 3. bir AI bağla; session_start'ı kendisi çalıştırır", c3b: "# codex, gemini, cursor",
+    "ev-h": "Ne ölçüldü", e1: "kayıt verilen taze bir AI'nın projenin kararları ve açık işleri hakkında doğru bildiği soru", e2: "kurulu skill'ler yerine kurallar brief'te: aynı sonuç, kör ölçümde daha az token", e3: "bir oturumun yüklediği tüm araç listesi için token; 4.706'dan indi", e4: "kontrollerin ölçülen maliyeti; ve şimdiye kadar yakalanan sahte \"bitti\" sayısı, çünkü 16 dürüst denemede hiç olmadı",
+    "ev-note": "İddia edilmeyen: brief'in kaydı kendi açan bir AI'dan iyi olduğu, Claude dışı bir AI'nın hatırlatılmadan bir board işini kapattığı, sahibin zamanının azaldığı. Bunlar gerçek işte öğrenilecek sıradaki şeyler.",
+    f1: "Yerel, özel, Node ≥ 22, tek bağımlılık", f2: "Kayıt ve board projenin kendi git'inde"
+  };
+  var en = {};
+  var nodes = document.querySelectorAll("[data-i18n]");
+  nodes.forEach(function (n) { en[n.getAttribute("data-i18n")] = n.textContent; });
+  function apply(lang) {
+    nodes.forEach(function (n) { var k = n.getAttribute("data-i18n"); var v = lang === "tr" ? tr[k] : en[k]; if (v != null) n.textContent = v; });
+    document.getElementById("lang-en").setAttribute("aria-pressed", String(lang !== "tr"));
+    document.getElementById("lang-tr").setAttribute("aria-pressed", String(lang === "tr"));
+    document.documentElement.lang = lang;
+    try { localStorage.setItem("plutos-intro-lang", lang); } catch (e) {}
+  }
+  document.getElementById("lang-en").addEventListener("click", function () { apply("en"); });
+  document.getElementById("lang-tr").addEventListener("click", function () { apply("tr"); });
+  var saved = null; try { saved = localStorage.getItem("plutos-intro-lang"); } catch (e) {}
+  if (saved === "tr") apply("tr");
+  var steps = document.querySelectorAll("#session .step"), i = 0;
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce && steps.length) setInterval(function () { steps[i].classList.remove("on"); i = (i + 1) % steps.length; steps[i].classList.add("on"); }, 2200);
+})();
+</script>

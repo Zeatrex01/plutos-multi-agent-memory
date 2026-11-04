@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; frame-src http://127.0.0.1:*; form-action 'none'; base-uri 'none'">
+  <title>PLUTOS · Local workspace</title>
+  <link rel="stylesheet" href="client.css">
+  <script src="client.js" defer></script>
+</head>
+<body>
+  <div class="connection-bar">
+  <header>
+    <div><strong>PLUTOS</strong><span>Local workspace</span></div>
+    <form id="connection">
+      <label for="port">Local port</label>
+      <input id="port" value="3040" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" required aria-describedby="help">
+      <button type="submit">Open the local view</button>
+      <button id="close" type="button" hidden>Close the view</button>
+    </form>
+  </header>
+  <p id="status" role="status">No local workspace is open yet.</p>
+  </div>
+  <dialog id="replace-confirmation" aria-labelledby="replace-title" aria-describedby="replace-help">
+    <h2 id="replace-title">Close the open view?</h2>
+    <p id="replace-help">First save your drafts in PLUTOS. If you go on, the open screen changes and drafts can be lost.</p>
+    <div><button type="button" data-view-discard="keep" autofocus>Cancel</button><button type="button" data-view-discard="discard">Close the view</button></div>
+  </dialog>
+  <main>
+    <section id="welcome" aria-labelledby="welcome-title">
+      <p class="eyebrow">One tab · the project on this computer</p>
+      <h1 id="welcome-title">Open your local PLUTOS in this tab.</h1>
+      <p id="help">First start PLUTOS on this computer. The default port is 3040; if you use another port, change it above. This panel only opens the local app at 127.0.0.1.</p>
+      <ol>
+        <li><strong>Open the local view</strong><p>Your current PLUTOS screen opens below. Your project files and records stay on your own computer.</p></li>
+        <li><strong>Choose your project</strong><p>Open the saved folder on the Projects page. Use the project MCP connection of the connected Claude, Codex or Gemini.</p></li>
+      </ol>
+      <p class="note">This outer panel does not read project content and sends no records to a remote server. The local PLUTOS must keep running. A subscription AI may pass the MCP results it uses on to its own provider.</p>
+    </section>
+    <div id="workspace" hidden></div>
+  </main>
+  <details id="connection-help">
+    <summary>About the connection</summary>
+    <p>The status at the top shows whether the local PLUTOS answers; it does not mean that the AIs are connected. If the screen does not open, check that the app is running and check its port. If the browser asks for local network permission, decide for this local connection.</p>
+    <p>When the connection drops, the screen does not refresh on its own; you can check the connection without losing your drafts. Opening it again changes the screen and asks you first.</p>
+    <p>Before you close the view, save your draft in PLUTOS. Closing the view ends the local tab connection.</p>
+  </details>
+</body>
+</html>

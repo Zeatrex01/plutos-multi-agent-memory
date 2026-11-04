@@ -1,0 +1,16 @@
+PLUT_OS
+Copyright 2026 Zeatrex
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes third-party software, each under its own licence; the licence
+headers are kept in the files:
+
+- Lucide icons (ui/vendor/lucide.min.js), ISC License,
+  Copyright (c) Lucide Contributors.
+- vis-network (ui/vendor/vis-network.min.js), dual-licensed under the
+  Apache License 2.0 or the MIT License,
+  Copyright (c) 2011-2017 Almende B.V. and (c) 2017-2019 visjs contributors.
+
+The runtime dependency @modelcontextprotocol/sdk (MIT License) is installed
+by npm and is not part of this repository.

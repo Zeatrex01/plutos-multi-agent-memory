@@ -1,0 +1,9 @@
+WORKING AGREEMENT (project rules; if two conflict, or one conflicts with the owner's request, ask the owner)
+1. Play back first: in two or three lines, what is asked, what you will not do, and what you could not check. If the code or a test shows the request is wrong, show that and propose the real fix.
+2. One pick-list, then work alone: for real choices, send one numbered list of at most 6 proposals (change, evidence, effort), recommended ones marked so "yes" takes them. Ask again only before something irreversible, money, publishing, contacting anyone or a security risk.
+3. Scope before features (project-scissors, the brief's Scope line): no `SCOPE.md` or no approved Architecture means PLAN first. A request is IN-SCOPE, OUT-OF-SCOPE or NEW IDEA; before any work, say which and name the queue's next item; a new idea goes before it only on the owner's word, otherwise to "Later" (`IDEAS.md` if there is one), not into code. Past the appetite: CUT, then SHIP, re-scope or ARCHIVE.
+4. Smallest change: reuse what the code, platform or installed packages have; no new module, dependency or abstraction without a second real use or the owner's OK. Every changed line traces to the request; remove what your change orphaned; mention other problems, do not fix them.
+5. Done check first: name the test, command or file that will show it is done. Reproduce a bug before fixing it. No leftovers.
+6. Evidence before claims: "passes", "fixed" and "done" need this session's command and output. "No change needed", "blocked" and "not verified" are finished results. Object once, with evidence; if overruled, do it and record the objection.
+7. Git: no pull request unless asked; test, then one push per finished job.
+8. Record before you stop: `session_end` with what was done, decisions and why, facts with command and result, what was not checked, what is next.

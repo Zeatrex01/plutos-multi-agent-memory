@@ -1,0 +1,10 @@
+{
+  "note": "Per-session token cost ceilings, chars/4. Lower with --update; never raise without a reason in the commit message.",
+  "measuredAt": "2026-11-04",
+  "budgets": {
+    "toolDefinitions": 3499,
+    "agentsMd": 1353,
+    "sessionStartBrief": 754,
+    "serverInstructions": 162
+  }
+}

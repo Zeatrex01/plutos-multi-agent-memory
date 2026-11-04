@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "PLUTOS Local Workspace",
+  "version": "0.1.0",
+  "description": "Opens the PLUTOS screen on this computer in a browser tab.",
+  "action": { "default_title": "Open the PLUTOS local workspace" },
+  "background": { "service_worker": "extension.js" },
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; frame-src http://127.0.0.1:*; form-action 'none'; base-uri 'none'"
+  }
+}

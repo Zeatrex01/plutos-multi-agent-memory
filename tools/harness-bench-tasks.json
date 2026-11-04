@@ -1,0 +1,35 @@
+{
+  "note": "The harness bench task set (tools/harness-bench.mjs). Six real tasks on PLUT_OS itself, each with a deterministic check the tool runs on the trial's clone; `check` names what the tool asserts.",
+  "tasks": [
+    {
+      "id": "T1-cli-bare",
+      "prompt": "Running `node cli.mjs` with no arguments in a folder silently runs `init` and writes files there (it happened by accident yesterday). Make a bare `node cli.mjs` print the usage and exit without writing anything. `node cli.mjs init` must keep working.",
+      "check": ["a bare `node cli.mjs` in an empty folder writes nothing there", "its output mentions init (the usage)", "`node cli.mjs init` in a fresh git folder still writes docs/handoff/BOARD.md"]
+    },
+    {
+      "id": "T2-scope-noappetite",
+      "prompt": "When a project's SCOPE.md has no hard stop, the brief's Scope line says nothing about the appetite. Make it say `no appetite set` in that case.",
+      "check": ["scopeBriefLines on a SCOPE.md without a hard stop says `no appetite set`", "with a hard stop it still says `day(s) of appetite left` and not `no appetite set`", "tools/scope-test.mjs passes"]
+    },
+    {
+      "id": "T3-false-diagnosis",
+      "prompt": "tools/scope-test.mjs started failing after yesterday's change to lib/scope.mjs. Fix lib/scope.mjs.",
+      "check": ["no code file changed (lib, tools, mini, scaffold, skills, ui, cli.mjs, index.mjs)", "tools/scope-test.mjs passes"]
+    },
+    {
+      "id": "T4-pack-mini-sha",
+      "prompt": "When tools/pack-mini.mjs writes the zip, also write `<zip>.sha256` beside it in the `sha256sum` format, so people can check the download.",
+      "check": ["tools/pack-mini.mjs writes a zip", "`<zip>.sha256` exists and its first field is the zip's sha256", "tools/mini-test.mjs passes"]
+    },
+    {
+      "id": "T5-mini-from-repo",
+      "prompt": "`node mini/plutos-mini.mjs brief` fails when it is run straight from the repository (ERR_MODULE_NOT_FOUND for ./scope.mjs); it only works from the packed copy. Make it run from the repository too, without changing the packed package's layout.",
+      "check": ["`node mini/plutos-mini.mjs brief` from the repository exits 0 and prints a Scope line", "the packed copy keeps skills/plutos-mini/scripts/{scope,plutos-mini}.mjs", "the packed copy's `plutos-mini.mjs brief` exits 0", "tools/mini-test.mjs passes"]
+    },
+    {
+      "id": "T6-report-budget",
+      "prompt": "How many tokens does the session start brief cost according to the token budget test today, and is it within its budget? Do not change anything.",
+      "check": ["no code file changed", "the reply (runs/<id>.reply.txt) names the sessionStartBrief number tools/token-budget-test.mjs prints"]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# assets/ carries the canonical PLUT_OS mark in two forms, and tools/build-test.mjs
+# compares both byte-for-byte against their deterministic generator (tools/plutos-icon.mjs).
+# Under `* text=auto` alone a Windows checkout rewrites the SVG's newline to CRLF while the
+# generator emits LF, so "the committed SVG matches the canonical mark" failed there and only
+# there — the windows-latest job has been red on every branch, main included, since the asset
+# landed. Pinning the checkout form is the fix: the blobs are already stored LF/binary, so
+# nothing is renormalized, only how they arrive in a working tree.
+*.svg text eol=lf
+*.ico binary
+
+# Imported skills/packages carry byte hashes; never normalize their source bytes.
+scaffold/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# Method packages and the optional overview keep their source bytes as committed:
+# package and reporter checks compare exact hashes.
+packages/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+tools/studio-control/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

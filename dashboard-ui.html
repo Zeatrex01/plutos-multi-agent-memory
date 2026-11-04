@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLUT_OS | AI Operating System</title>
+    <!-- Inline data URI, not a file: the browser requests /favicon.ico unprompted and there
+         was nothing to serve, so every load logged a 404 and the tab showed a blank icon.
+         Same mark as the boot splash (a planet and two orbits: the shared core and the AIs around
+         it) — fixed colors here, not CSS vars: a favicon is its own document and never
+         sees the page's theme, so it stays the one place the mark does not follow an accent
+         theme swap. -->
+    <link rel="manifest" href="/ui/manifest.webmanifest">
+    <meta name="theme-color" content="#0B1120">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="PLUT_OS">
+    <link rel="apple-touch-icon" href="/ui/icons/apple-touch-icon.png">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20aria-hidden%3D%22true%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22f%22%20cx%3D%2238%25%22%20cy%3D%2232%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFD08A%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23E8892B%22%2F%3E%3C%2FradialGradient%3E%3CclipPath%20id%3D%22fa%22%3E%3Crect%20x%3D%22-10%22%20y%3D%2250%22%20width%3D%22120%22%20height%3D%2260%22%20transform%3D%22rotate(-24%2050%2050)%22%2F%3E%3C%2FclipPath%3E%3CclipPath%20id%3D%22fb%22%3E%3Crect%20x%3D%22-10%22%20y%3D%2250%22%20width%3D%22120%22%20height%3D%2260%22%20transform%3D%22rotate(24%2050%2050)%22%2F%3E%3C%2FclipPath%3E%3C%2Fdefs%3E%3Cellipse%20cx%3D%2250%22%20cy%3D%2250%22%20rx%3D%2245%22%20ry%3D%2215%22%20fill%3D%22none%22%20stroke%3D%22%238B7CF6%22%20stroke-width%3D%225%22%20transform%3D%22rotate(-24%2050%2050)%22%2F%3E%3Cellipse%20cx%3D%2250%22%20cy%3D%2250%22%20rx%3D%2245%22%20ry%3D%2215%22%20fill%3D%22none%22%20stroke%3D%22%233BB3A3%22%20stroke-width%3D%225%22%20transform%3D%22rotate(24%2050%2050)%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2221%22%20fill%3D%22url(%23f)%22%2F%3E%3Cg%20clip-path%3D%22url(%23fa)%22%3E%3Cellipse%20cx%3D%2250%22%20cy%3D%2250%22%20rx%3D%2245%22%20ry%3D%2215%22%20fill%3D%22none%22%20stroke%3D%22%238B7CF6%22%20stroke-width%3D%225%22%20transform%3D%22rotate(-24%2050%2050)%22%2F%3E%3C%2Fg%3E%3Cg%20clip-path%3D%22url(%23fb)%22%3E%3Cellipse%20cx%3D%2250%22%20cy%3D%2250%22%20rx%3D%2245%22%20ry%3D%2215%22%20fill%3D%22none%22%20stroke%3D%22%233BB3A3%22%20stroke-width%3D%225%22%20transform%3D%22rotate(24%2050%2050)%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
+    <!-- Self-hosted (ui/vendor): CDN load failures were silently swallowed by fetchDocHubData's
+         catch and left the Document Hub blank with no console error. -->
+    <script src="/ui/vendor/lucide.min.js"></script>
+    <script type="text/javascript" src="/ui/vendor/vis-network.min.js"></script>
+    <link rel="stylesheet" href="/ui/styles.css">
+    <link rel="stylesheet" href="/ui/council.css">
+    <link rel="stylesheet" href="/ui/research.css">
+    <link rel="stylesheet" href="/ui/mobile.css">
+    <script>
+    // Stamp the theme BEFORE first paint (no flash). Default follows the OS preference;
+    // the system-bar toggle persists an explicit choice under 'plutos-mode'.
+    (function () {
+        var saved = null;
+        try { saved = localStorage.getItem('plutos-mode'); } catch (e) {}
+        var mode = (saved === 'light' || saved === 'dark') ? saved
+            : (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', mode);
+    })();
+    </script>
+</head>
+<body>
+    <!-- OS system bar: always-visible system state, like a menu bar -->
+    <div class="system-bar">
+        <!-- Hidden above the mobile breakpoint (ui/styles.css) — the sidebar is a permanent
+             column there and has nothing to open. -->
+        <button class="hamburger-btn" aria-label="Menu" onclick="document.body.classList.toggle('sidebar-open')">
+            <i data-lucide="menu" style="width:16px; height:16px;"></i>
+        </button>
+        <span class="sys-mark"><b>▮</b> PLUT_OS</span>
+        <!-- Must match package.json "version" — tools/smoke-test.mjs asserts it, so it cannot drift. -->
+        <span class="sys-item dim" style="color:var(--text-muted);">v0.5.0-beta</span>
+        <span class="sys-spacer"></span>
+        <span class="sys-item"><span style="color:var(--text-muted);" data-i18n="sys_project">project</span> <span id="sys-project">—</span></span>
+        <!-- Whether an AI tool can reach this project, in words, and one click to where it is
+             fixed or seen (ui/modules/activity.js). -->
+        <button type="button" class="sys-item sys-link" id="sys-mcp" onclick="window.openAiLink?.()"><span class="sys-led" id="sys-mcp-led"></span> <span id="sys-mcp-label">AI: …</span></button>
+        <!-- Live: branch + how many files are dirty right now. Updated by ui/modules/activity.js. -->
+        <span class="sys-item" id="sys-activity"><span class="sys-led"></span> …</span>
+        <!-- Which AIs are on this project, from the arrivals session_start records. -->
+        <span class="sys-item" id="sys-participants"></span>
+        <span class="sys-item" id="sys-clock">--:--</span>
+        <!-- The only language switch in the UI — flips en/tr and persists (ui/i18n.js). -->
+        <button class="theme-toggle" id="lang-toggle" aria-label="Switch language" title="Switch language" onclick="window.toggleLanguage()"><i data-lucide="globe" style="width:13px; height:13px; vertical-align:-2px;"></i> <span id="lang-indicator">…</span></button>
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme" onclick="window.togglePlutosMode()"><span id="theme-toggle-label">…</span></button>
+    </div>
+    <!-- Tap-outside-to-close for the mobile drawer. display:none above the breakpoint and
+         whenever the drawer itself is closed — see ui/styles.css body.sidebar-open. -->
+    <div class="sidebar-backdrop" onclick="document.body.classList.remove('sidebar-open')"></div>
+    <script>
+    // Light/dark toggle — flips data-theme (token-level switch in styles.css) and persists.
+    (function () {
+        var label = document.getElementById('theme-toggle-label');
+        var sync = function () {
+            var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+            label.textContent = dark ? 'light' : 'dark';
+        };
+        window.togglePlutosMode = function () {
+            var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            try { localStorage.setItem('plutos-mode', next); } catch (e) {}
+            sync();
+        };
+        sync();
+    })();
+    </script>
+
+    <!-- Boot sequence: real checks, not theater — each line reflects an actual API answer.
+         Shown once per tab session (sessionStorage), click to skip. -->
+    <div class="boot-splash" id="boot-splash">
+        <!-- The mark, at boot scale: same badge as the favicon and the sidebar, with a ring
+             that draws itself once on load — a power-on gesture, not a looping spinner, so
+             it reads as "this just started" rather than "still loading" once it completes. -->
+        <svg class="boot-mark" width="96" height="96" viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="bm" cx="38%" cy="32%"><stop offset="0" stop-color="#FFD08A"/><stop offset="1" stop-color="#E8892B"/></radialGradient><clipPath id="bma"><rect x="-10" y="50" width="120" height="60" transform="rotate(-24 50 50)"/></clipPath><clipPath id="bmb"><rect x="-10" y="50" width="120" height="60" transform="rotate(24 50 50)"/></clipPath></defs><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#8B7CF6" stroke-width="5" transform="rotate(-24 50 50)"/><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#3BB3A3" stroke-width="5" transform="rotate(24 50 50)"/><circle cx="50" cy="50" r="21" fill="url(#bm)"/><g clip-path="url(#bma)"><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#8B7CF6" stroke-width="5" transform="rotate(-24 50 50)"/></g><g clip-path="url(#bmb)"><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#3BB3A3" stroke-width="5" transform="rotate(24 50 50)"/></g></svg>
+        <div class="boot-logo">PLUT<b class="cursor-blink">_</b>OS</div>
+        <div class="boot-sub">AI Operating System</div>
+        <div class="boot-log" id="boot-log"></div>
+        <div class="boot-hint">CLICK TO SKIP</div>
+    </div>
+    <script>
+    (function () {
+        const splash = document.getElementById('boot-splash');
+        const logEl = document.getElementById('boot-log');
+        const finish = () => { splash.classList.add('done'); sessionStorage.setItem('plutos-booted', '1'); };
+        splash.addEventListener('click', finish);
+        if (sessionStorage.getItem('plutos-booted')) { splash.classList.add('done'); return; }
+
+        // Every probe hits localhost and returns in single-digit milliseconds, so without a
+        // floor the whole log painted in one frame — a flash of finished text, not a boot.
+        // DWELL is the minimum a line is allowed to take; a slow probe simply takes longer.
+        const DWELL = 130;
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const line = (html, cls = '') => {
+            const d = document.createElement('div');
+            d.className = 'boot-line ' + cls;
+            d.innerHTML = html;
+            logEl.appendChild(d);
+            return d;
+        };
+        const cursor = '<span class="boot-cursor"></span>';
+        const probe = async (label, url, render) => {
+            const started = Date.now();
+            const row = line('<span class="dim">' + label + '</span> ' + cursor);
+            let out;
+            try {
+                out = '<span class="ok">' + render(await fetch(url).then(r => r.json())) + '</span>';
+            } catch (e) {
+                out = '<span style="color:var(--status-error)">unavailable</span>';
+            }
+            await sleep(Math.max(0, DWELL - (Date.now() - started)));
+            row.innerHTML = '<span class="dim">' + label + '</span> ' + out;
+            return out;
+        };
+        (async () => {
+            // Version must match package.json — tools/smoke-test.mjs asserts both this and the
+            // system bar, so the boot screen cannot drift the way it did at "v1.0".
+            line('<span class="dim">plutos kernel</span> <span class="ok">v0.5.0-beta</span>');
+            await sleep(DWELL);
+            await probe('mounting workspaces', '/api/workspaces', d => (d.workspaces || []).length + ' registered');
+            await probe('mcp heartbeat', '/api/mcp/status', d => d.active ? 'online' : 'offline');
+            await probe('document hygiene', '/api/hygiene', d => d.ok ? 'clean' : (d.warnings || []).length + ' warning(s)');
+            await probe('session memory', '/api/continuity', d => d.exists ? (d.sessions || []).length + ' session(s) on record' : 'empty');
+            // The last line is the one worth reading: which project you are in and how far
+            // along it is. "ready." on its own told the reader nothing they didn't assume.
+            const closing = line('<span class="dim">state</span> ' + cursor);
+            let summary = '<span class="ok">ready</span>';
+            try {
+                const a = await fetch('/api/activity').then(r => r.json());
+                if (!a.hasProject) {
+                    summary = '<span class="warn">no project selected — add one to begin</span>';
+                } else {
+                    const project = (a.branch ? a.branch + ' · ' : '') + (a.readiness ? a.readiness.stage : 'ready');
+                    // Only the AIs active in the last 30 minutes, the same count as the top bar;
+                    // the whole roster counted every AI that ever registered.
+                    const peers = (a.participants || []).filter(p => p.fresh).length;
+                    summary = '<span class="ok">' + project + '</span>'
+                        + (peers ? ' <span class="dim">· ' + peers + ' AI on this project</span>' : '');
+                }
+            } catch (e) { /* keep the plain "ready" */ }
+            await sleep(DWELL);
+            closing.innerHTML = '<span class="dim">state</span> <span class="boot-final">' + summary + '</span>';
+            setTimeout(finish, 700);
+        })();
+    })();
+
+    // System bar clock. The project name and the AI link live in ui/modules/activity.js, where the
+    // words can follow the UI language; here, the LED's state map had gone missing (2026-08-30),
+    // so every refresh threw and the light stayed red whatever the state.
+    (function () {
+        const clock = document.getElementById('sys-clock');
+        const tick = () => { clock.textContent = new Date().toTimeString().slice(0, 5); };
+        tick(); setInterval(tick, 15000);
+    })();
+
+    // Mobile drawer: close on navigation. One delegated listener rather than editing each
+    // of the dozen tab-btn onclick attributes — picking a tab is done, the drawer sliding
+    // back out of the way is what makes it feel like it navigated rather than just added a
+    // highlight underneath itself.
+    (function () {
+        document.addEventListener('DOMContentLoaded', () => {
+            const nav = document.querySelector('.nav-tabs');
+            if (nav) nav.addEventListener('click', (e) => {
+                if (e.target.closest('.tab-btn')) document.body.classList.remove('sidebar-open');
+            });
+        });
+    })();
+    </script>
+    <aside class="sidebar">
+        <div class="brand-container" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <!-- The live mark: one orbit per AI connected to this project (ui/modules/orbit.js). -->
+                <canvas class="brand-logo brand-orbit" data-orbit="mini" width="40" height="40" aria-hidden="true"></canvas>
+                <svg class="brand-logo brand-logo-static" width="40" height="40" hidden viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="sm" cx="38%" cy="32%"><stop offset="0" stop-color="#FFD08A"/><stop offset="1" stop-color="#E8892B"/></radialGradient><clipPath id="sma"><rect x="-10" y="50" width="120" height="60" transform="rotate(-24 50 50)"/></clipPath><clipPath id="smb"><rect x="-10" y="50" width="120" height="60" transform="rotate(24 50 50)"/></clipPath></defs><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#8B7CF6" stroke-width="5" transform="rotate(-24 50 50)"/><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#3BB3A3" stroke-width="5" transform="rotate(24 50 50)"/><circle cx="50" cy="50" r="21" fill="url(#sm)"/><g clip-path="url(#sma)"><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#8B7CF6" stroke-width="5" transform="rotate(-24 50 50)"/></g><g clip-path="url(#smb)"><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#3BB3A3" stroke-width="5" transform="rotate(24 50 50)"/></g></svg>
+                <div class="brand-title">
+                    <h1 id="project-title">PLUT_OS</h1>
+                    <span>AI Operating System</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="user-profile" style="position: relative; margin: 1.5rem 0; width: 100%;">
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 14px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;" onclick="document.getElementById('workspace-dropdown').style.display = document.getElementById('workspace-dropdown').style.display === 'none' ? 'block' : 'none'">
+                <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                    <i data-lucide="folder" style="width:16px; height:16px; flex-shrink:0;"></i> 
+                    <span id="active-workspace-name" style="font-weight:600; font-size:0.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Loading…</span>
+                </div>
+                <i data-lucide="chevron-down" style="width:14px; height:14px; flex-shrink:0;"></i>
+            </div>
+            <div id="workspace-dropdown" style="display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; z-index: 100;">
+                <div id="workspace-list" style="max-height: 200px; overflow-y: auto;">
+                    <!-- Workspace items will be injected here -->
+                </div>
+                <div style="border-top: 1px solid var(--border-subtle); padding: 8px;">
+                    <button onclick="addNewWorkspace()" style="width: 100%; padding: 8px; background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-title); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; font-size:0.85rem; font-weight:600;">
+                        <i data-lucide="plus" style="width:14px; height:14px;"></i> <span data-i18n="btn_add_project">Add project</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Three groups, one per kind of visit ("the panels do not explain
+             themselves"): the daily work, what the project knows, and setup.
+             data-module marks an OPTIONAL tab, hidden until enabled in Settings → Modules.
+             Registry: ui/modules/features.js — smoke-test asserts the two stay in sync. -->
+        <div class="nav-tabs" style="flex: 1;">
+            <div class="nav-group" data-i18n="nav_work">Work</div>
+            <button class="tab-btn active" onclick="switchView('overview', this)">
+                <i data-lucide="home"></i> <span data-i18n="tab_overview">Home</span>
+            </button>
+            <button class="tab-btn" onclick="switchView('board', this)" style="position: relative;">
+                <i data-lucide="kanban"></i> <span data-i18n="tab_board">Board</span>
+                <span class="board-unread-dot" style="display: none;"></span>
+            </button>
+            <button class="tab-btn" data-module="council" onclick="switchView('council', this)">
+                <i data-lucide="layout-panel-left"></i> <span data-i18n="tab_council">Shared Table</span>
+            </button>
+            <div class="nav-group" data-i18n="nav_knowledge">Knowledge</div>
+            <button class="tab-btn" data-module="report" onclick="switchView('report', this)">
+                <i data-lucide="presentation"></i> <span data-i18n="tab_report">Report</span>
+            </button>
+            <button class="tab-btn" data-module="research" onclick="switchView('research', this)">
+                <i data-lucide="telescope"></i> <span data-i18n="tab_research">Research</span>
+            </button>
+            <button class="tab-btn" data-module="codeindex" onclick="switchView('codeindex', this)">
+                <i data-lucide="compass"></i> <span data-i18n="tab_codeindex">Code map</span>
+            </button>
+            <button class="tab-btn" data-module="dochub" onclick="switchView('dochub', this)">
+                <i data-lucide="files"></i> <span data-i18n="tab_dochub">Documents</span>
+            </button>
+            <button class="tab-btn" data-module="graphify" onclick="switchView('graphify', this)">
+                <i data-lucide="network"></i> <span data-i18n="tab_graphify">Dependency graph</span>
+            </button>
+            <div class="nav-group" data-i18n="nav_setup">Setup</div>
+            <button class="tab-btn" onclick="switchView('hub-view', this)">
+                <i data-lucide="layout-grid"></i> <span data-i18n="tab_hub">Projects</span>
+            </button>
+            <button class="tab-btn" data-module="skills" onclick="switchView('skills', this)">
+                <i data-lucide="sparkles"></i> <span data-i18n="tab_skills">Skills</span>
+            </button>
+            <button class="tab-btn" onclick="switchView('setup', this)">
+                <i data-lucide="clipboard-list"></i> <span data-i18n="tab_setup">Setup questions</span>
+            </button>
+            <button class="tab-btn" onclick="switchView('settings', this)">
+                <i data-lucide="settings"></i> <span data-i18n="tab_settings">Settings</span>
+            </button>
+            <button class="tab-btn" onclick="switchView('docs', this)">
+                <i data-lucide="book-open"></i> <span data-i18n="tab_docs">Guide</span>
+            </button>
+        </div>
+    </aside>
+
+    <div class="main-container">
+        <section id="view-council" class="view-section council-view">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="layout-panel-left"></i> <span data-i18n="council_title">Shared Table</span></h2>
+                    <p class="page-purpose" data-i18n="council_subtitle">One job worked on by several departments separately. Their answers are revealed here side by side, so you can compare and decide.</p>
+                </div>
+                <div class="page-actions"><button type="button" class="btn-secondary" data-council-action="refresh"><i data-lucide="refresh-cw" aria-hidden="true"></i> <span data-i18n="office_refresh">Refresh</span></button></div>
+            </header>
+            <details class="page-help" data-help="council">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_council_1">Each department answers without seeing the others, so the answers stay independent.</li>
+                    <li data-i18n="help_council_2">Your AI opens a room for a job; you read the answers and the summary here, and decide.</li>
+                </ul>
+            </details>
+            <div id="council-container"><p class="page-status" data-i18n="loading">Loading…</p></div>
+        </section>
+        <!-- RESEARCH — source-backed topic research run by the connected AI (lib/research) -->
+        <section id="view-research" class="view-section research-view">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="telescope"></i> <span data-i18n="research_title">Research</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_research">Research your AI did with sources: every page it used is saved, and every quote must appear in it word for word.</p>
+                </div>
+                <div class="page-actions">
+                    <button type="button" class="btn-secondary" data-research-new-toggle><i data-lucide="plus" aria-hidden="true"></i> <span data-i18n="research_new_topic">New topic</span></button>
+                    <button type="button" class="btn-secondary" onclick="window.refreshResearch()"><i data-lucide="refresh-cw" aria-hidden="true"></i> <span data-i18n="research_refresh">Refresh</span></button>
+                </div>
+            </header>
+            <details class="page-help" data-help="research">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_research_1">Ask your AI to research a topic with the PLUT_OS research tools; the result appears here.</li>
+                    <li data-i18n="help_research_2">Pick a topic to read its brief and the pages behind it.</li>
+                </ul>
+            </details>
+            <div id="research-runtime"></div>
+            <div class="research-layout"><aside id="research-topics"></aside><article id="research-detail" class="card"></article></div>
+        </section>
+        <!-- HOME — the page a project opens on: what needs the owner, the next setup step while
+             there is one, what is happening now, what happened recently (ui/modules/overview.js).
+             The technical view is folded under Project details at the bottom. -->
+        <section id="view-overview" class="view-section active">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="home"></i> <span data-i18n="title_overview">Home</span></h2>
+                    <p class="page-purpose" data-i18n="overview_sub">What needs you, what your AIs are doing, and the next step for this project.</p>
+                </div>
+                <div class="page-actions">
+                    <button type="button" class="btn-secondary" onclick="switchView('board')"><i data-lucide="kanban"></i> <span data-i18n="home_open_board">Open the board</span></button>
+                </div>
+            </header>
+            <details class="page-help" data-help="overview">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_overview_1">Needs you lists the questions your AIs are waiting on, and what finished or got stuck since you last pressed Mark seen.</li>
+                    <li data-i18n="help_overview_2">Next step shows until the project is set up: open it here, install the project kit, connect an AI, let it read the project, give it a first task.</li>
+                    <li data-i18n="help_overview_3">Now and Recently come from the board and from the notes your AIs leave when they finish a session. Project details at the bottom holds the technical view.</li>
+                </ul>
+            </details>
+            <div class="orbit-hero card">
+                <canvas class="orbit-hero-canvas" data-orbit="hero" aria-hidden="true"></canvas>
+                <div class="orbit-hero-text">
+                    <div class="orbit-hero-kicker" data-i18n="orbit_kicker">Connected now</div>
+                    <div class="orbit-hero-count" id="home-orbit-count" role="status" aria-live="polite"></div>
+                    <div class="orbit-hero-names" id="home-orbit-names"></div>
+                    <p class="orbit-hero-note" data-i18n="orbit_note">Each AI that connects gets an orbit around the shared record: what one learns and decides, the next one reads.</p>
+                </div>
+            </div>
+            <div id="overview-container"><p data-i18n="loading">Loading…</p></div>
+            <!-- Outside #overview-container on purpose: overview.js replaces that container on every
+                 render, and the files-and-commits strip is painted by activity.js on its own clock. -->
+            <details class="card home-details" id="home-details">
+                <summary><i data-lucide="info"></i> <span data-i18n="home_details">Project details</span>
+                    <span class="card-note" data-i18n="home_details_note">files being edited, last commit, counters, map health</span></summary>
+                <div class="home-details-body">
+                    <div class="card-head"><h3 class="card-title"><span class="live-dot"></span> <span data-i18n="activity_title">Files and commits</span></h3>
+                        <span class="card-note" id="activity-stamp"></span></div>
+                    <div id="activity-body"><p class="page-status" data-i18n="loading">Loading…</p></div>
+                    <div id="home-details-extra"></div>
+                </div>
+            </details>
+        </section>
+
+        <section id="hub-view" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="layout-grid"></i> <span data-i18n="title_hub">Projects</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_hub">Add a project, open the one you work on, and connect your AI tools to it.</p>
+                </div>
+                <div class="page-actions"><button class="btn-primary" onclick="addNewWorkspace()"><i data-lucide="folder-plus"></i> <span data-i18n="btn_add_project">Add project</span></button></div>
+            </header>
+            <details class="page-help" data-help="hub" data-help-default="closed">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_hub_1">Adding a project only reads its folder. Installing the project kit adds the shared board, memory and rules files your AIs use.</li>
+                    <li data-i18n="help_hub_2">Connect an AI writes the setting your AI tool reads (each tool reads a different file). Reload the tool afterwards.</li>
+                    <li data-i18n="help_hub_3">Each project keeps its own team, board and records; switching projects reloads the page.</li>
+                </ul>
+            </details>
+            <!-- The open project: its header (workspace-tree.js) and its two steps, the kit and the
+                 AI connections (connect.js). Hidden while no project is open. -->
+            <section id="hub-current" class="card hub-card hub-current" aria-labelledby="hub-current-title" hidden>
+                <div id="hub-project-binding"></div>
+                <div id="connect-section"><ol id="connect-rows" class="hub-steps"></ol></div>
+            </section>
+            <section id="hub-list" class="card hub-card hub-project-browser" aria-labelledby="hub-folders-title">
+                <div class="hub-list-head"><h3 id="hub-folders-title"><span data-i18n="hub_folders_title">Your projects</span><small id="hub-project-count"></small></h3>
+                    <input id="hub-project-search" type="search" class="field-input field-sm" data-i18n-placeholder="hub_search_placeholder" placeholder="Project name or folder path" autocomplete="off" aria-label="Find a project" hidden></div>
+                <div id="hub-projects-container"></div>
+            </section>
+            <div id="hub-empty-host"></div>
+        </section>
+
+        <!-- SETUP VIEW (project interview → recommendation) -->
+        <section id="view-setup" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="clipboard-list"></i> <span data-i18n="title_setup">Setup questions</span></h2>
+                    <p class="page-purpose" data-i18n="setup_desc">Five questions about the project. PLUT_OS uses the answers to recommend roles and tools. Optional; your AI can answer them too.</p>
+                </div>
+            </header>
+            <details class="page-help" data-help="setup">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_setup_1">Pick an answer for each question; PLUT_OS saves them in docs/handoff/PROJECT_INTERVIEW.md.</li>
+                    <li data-i18n="help_setup_2">Install recommended setup adds the suggested tools to this project.</li>
+                </ul>
+            </details>
+            <div id="setup-container">
+                <p data-i18n="loading">Loading…</p>
+            </div>
+        </section>
+
+        <!-- SKILLS — the Agent Skills the project's AI tools read, and the packs that bring them
+             (ui/modules/skills.js, lib/skills.mjs). -->
+        <section id="view-skills" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="sparkles"></i> <span data-i18n="title_skills">Skills</span></h2>
+                    <p class="page-purpose" data-i18n="skills_desc">The skills your AI tools read in this project, and the packs that bring them. A skill is a folder with a SKILL.md; a pack switched on puts its skills where each AI tool looks.</p>
+                </div>
+            </header>
+            <details class="page-help" data-help="skills">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_skills_1">Each row is one skill folder; the pills say which AI tools read it and the source says whether the project or a pack put it there.</li>
+                    <li data-i18n="help_skills_2">Add a pack folder once, then switch it On per project; Off removes only the files the pack placed and left unchanged.</li>
+                </ul>
+            </details>
+            <div id="skills-container">
+                <p data-i18n="loading">Loading…</p>
+            </div>
+        </section>
+
+        <!-- REPORT VIEW (status report — the third map: where we are) -->
+        <section id="view-report" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="presentation"></i> <span data-i18n="title_report">Report</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_report">What happened in this project over a time window, and what your AIs have recorded as known.</p>
+                    <p id="report-meta" class="page-status"></p>
+                </div>
+                <div class="page-actions"><a href="/deck" id="deck-link" target="_blank" rel="noopener" class="btn-secondary">
+                        <i data-lucide="clapperboard"></i> <span data-i18n="report_deck_btn">Story Deck</span>
+                    </a>
+                    <div class="seg-control" style="margin:0;">
+                        <button type="button" class="report-days-btn active" onclick="setReportDays(7, this)">7d</button>
+                        <button type="button" class="report-days-btn" onclick="setReportDays(30, this)">30d</button>
+                        <button type="button" class="report-days-btn" onclick="setReportDays(90, this)">90d</button>
+                    </div></div>
+            </header>
+            <details class="page-help" data-help="report">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_report_1">Pick 7, 30 or 90 days. Sessions are what your AIs recorded when they finished; Landed is what reached git.</li>
+                    <li data-i18n="help_report_2">What your AIs have recorded: decisions, facts with a checked source, and facts nobody has checked yet. Do not rely on the last group.</li>
+                    <li data-i18n="help_report_3">Story Deck turns the same records into slides in your language.</li>
+                </ul>
+            </details>
+            <div id="report-container">
+                <p data-i18n="loading">Loading…</p>
+            </div>
+            <div id="report-memory"></div>
+        </section>
+
+        <!-- BOARD: give work to the AIs and follow it. The board comes first; the tools around it
+             (snapshot, watchers, hooks, document checks) are folded below it. -->
+        <section id="view-board" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="kanban"></i> <span data-i18n="title_board">Board</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_board">Give work to your AIs and follow it from To do to Done.</p>
+                    <p id="board-meta" class="page-status"></p>
+                </div>
+                <div class="page-actions">
+                    <button type="button" class="btn-primary" onclick="openAssignTask()"><i data-lucide="plus"></i> <span data-i18n="assign_title">Assign a task</span></button>
+                </div>
+            </header>
+            <details class="page-help" data-help="board">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_board_1">Assign a task: name the AI and say what you need. The task reaches that AI in its next session.</li>
+                    <li data-i18n="help_board_2">An AI claims a task (In progress), works on it and closes it with a result (Done). Blocked says what it is waiting on.</li>
+                    <li data-i18n="help_board_3">Agent board holds the notes of your AIs' helpers; Ideas holds work parked for later. Board tools at the bottom: a snapshot to hand to another AI, watchers, hooks, document checks.</li>
+                </ul>
+            </details>
+            <div id="board-container"><span data-i18n="loading">Loading…</span></div>
+            <details class="card board-tools">
+                <summary><i data-lucide="wrench"></i> <span data-i18n="board_tools">Board tools</span>
+                    <span class="pill pill-todo" id="board-tools-flag" hidden></span>
+                    <span class="card-note" data-i18n="board_tools_note">Snapshot, watchers, hooks</span></summary>
+                <div class="board-tools-body">
+                    <!-- Snapshot: one self-contained file to hand another AI. -->
+                    <div class="card snap-bar">
+                        <div>
+                            <b data-i18n="snapshot_title">Project snapshot</b>
+                            <span data-i18n="snapshot_desc">Everything an AI needs to pick this up elsewhere — uncommitted work included.</span>
+                        </div>
+                        <div class="snap-actions">
+                            <button type="button" class="btn-secondary btn-sm" onclick="copySnapshot()" data-i18n="snapshot_copy">Copy</button>
+                            <a class="btn-secondary btn-sm" href="/api/snapshot" download data-i18n="snapshot_download">Download</a>
+                        </div>
+                    </div>
+                    <details class="card assign-panel" data-panel="watcher">
+                        <summary>
+                            <i data-lucide="radio"></i> <span data-i18n="watcher_title">Board watchers</span>
+                        </summary>
+                        <div id="watcher-container" class="assign-panel-body">
+                            <p data-i18n="loading">Loading…</p>
+                        </div>
+                    </details>
+                    <details class="card assign-panel" data-panel="hooks">
+                        <summary>
+                            <i data-lucide="shield-check"></i> <span data-i18n="hooks_title">Hooks</span>
+                        </summary>
+                        <div id="hooks-container" class="assign-panel-body">
+                            <p data-i18n="loading">Loading…</p>
+                        </div>
+                    </details>
+                    <div id="board-hygiene"></div>
+                </div>
+            </details>
+        </section>
+
+        <!-- CODEINDEX VIEW -->
+        <section id="view-codeindex" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="compass"></i> <span data-i18n="title_codeindex">Code map</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_codeindex">A map of this project's code: its folders and files and what each defines. Pick a box to see its details.</p>
+                    <p id="codeindex-meta" class="page-status"></p>
+                </div>
+                <div class="page-actions"><button onclick="regenerateCodebaseIndex(this)" class="btn-primary">
+                            <i data-lucide="refresh-cw"></i> <span data-i18n="codeindex_scan_btn">Scan again</span>
+                        </button></div>
+            </header>
+            <details class="page-help" data-help="codeindex">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_codeindex_1">Scan again rebuilds the map after the code changes.</li>
+                    <li data-i18n="help_codeindex_2">Your AIs read the same map, so they find code without opening every file.</li>
+                </ul>
+            </details>
+            <div class="card">
+                <div id="codeindex-container" class="map-row">
+                    <!-- The toolbar (search, limit, physics) and the legend are drawn by ui/modules/codeindex.js
+                         above and below the canvas. -->
+                    <div id="codeindex-graph" class="map-canvas">
+                        <div id="codeindex-toolbar"></div>
+                        <div id="codeindex-legend"></div>
+                        <div id="codeindex-vis-canvas" style="width: 100%; height: 100%;"></div>
+                    </div>
+                    <div id="codeindex-sidebar" class="map-side">
+                        <div class="card">
+                            <div class="card-head"><h3 class="card-title"><i data-lucide="list-tree"></i> <span data-i18n="codeindex_systems">Folders</span></h3></div>
+                            <div id="codeindex-systems" class="map-list"></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-head"><h3 class="card-title"><i data-lucide="info"></i> <span data-i18n="codeindex_details_title">Details</span></h3></div>
+                            <div id="graph-node-details" class="map-details" data-i18n="codeindex_details_placeholder">
+                                Select a node in the graph map to view details.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DOCHUB VIEW -->
+        <section id="view-dochub" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="files"></i> <span data-i18n="title_dochub">Documents</span></h2>
+                    <p class="page-purpose" data-i18n="dochub_desc">This project's documents and how they link, with the latest commits beside them.</p>
+                </div>
+                <div class="page-actions"><button onclick="fetchDocHubData()" class="btn-secondary">
+                            <i data-lucide="refresh-cw"></i> <span data-i18n="btn_refresh_data">Refresh Data</span>
+                        </button></div>
+            </header>
+            <details class="page-help" data-help="dochub">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_dochub_1">Pick a document to see where it is and what links to it.</li>
+                    <li data-i18n="help_dochub_2">A drifted document no longer matches the code it describes.</li>
+                </ul>
+            </details>
+            <div class="card">
+                <div id="dochub-main-container" class="map-row">
+                    <!-- Documents Graph Network Map -->
+                    <div id="dochub-graph" class="map-canvas">
+                        <!-- Drawn by ui/modules/dochub.js (docFrame): toolbar, map, legend and states. -->
+                    </div>
+
+                    <!-- Document details + Git Activity Sidebar -->
+                    <div id="dochub-sidebar" class="map-side">
+                        <!-- Selected Doc details -->
+                        <div class="card">
+                            <div class="card-head"><h3 class="card-title"><i data-lucide="file-text"></i> <span data-i18n="doc_info_title">Document Info</span></h3></div>
+                            <div id="dochub-doc-details" class="map-details" data-i18n="doc_info_placeholder">
+                                Select a document node in the network map to view details.
+                            </div>
+                        </div>
+
+                        <!-- Git Activity Timeline -->
+                        <div class="card">
+                            <div class="card-head"><h3 class="card-title"><i data-lucide="git-branch"></i> <span data-i18n="title_git_timeline">Git Commit Activity</span></h3></div>
+                            <div id="dochub-git-container" class="map-details" style="display: flex; flex-direction: column; gap: 1rem;">
+                                <span data-i18n="loading">Loading…</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- GRAPHIFY STUDIO VIEW -->
+        <section id="view-graphify" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="network"></i> <span data-i18n="title_graphify">Dependency graph</span></h2>
+                    <p class="page-purpose" data-i18n="graphify_desc">Which source file depends on which, as a graph you can explore. Building it writes a map file into the project.</p>
+                </div>
+                <div class="page-actions"><button id="graphify-studio-build-btn" onclick="buildCurrentGraphifyStudioGraph()" class="btn-primary">
+                            <i data-lucide="sparkles"></i> <span id="graphify-studio-build-label" data-i18n="btn_build_graphify">Build the graph</span>
+                        </button>
+                        <button id="graphify-studio-clean-btn" onclick="cleanCurrentGraphifyStudioGraph()" class="btn-secondary btn-danger">
+                            <i data-lucide="trash-2"></i> <span data-i18n="btn_clean_graphify">Delete graph</span>
+                        </button>
+                        <a id="graphify-studio-fullscreen-btn" href="/api/graphify/html" target="_blank" class="btn-secondary">
+                            <i data-lucide="external-link"></i> <span data-i18n="btn_fullscreen">Open in a new tab</span>
+                        </a>
+                        <button onclick="fetchGraphifyStudio()" class="btn-secondary" aria-label="Refresh">
+                            <i data-lucide="refresh-cw"></i>
+                        </button>
+                        <!-- Seeing the tab is a browser preference (Settings → Modules, localStorage).
+                             THIS is the project's own answer to "use it", which the MCP server reads at
+                             session_start — so it lives in the project, not the browser. In the toolbar
+                             rather than the status bar because the canvas is 750px tall: down there it
+                             sat below the fold, which is no use for a setting meant to be noticed. -->
+                        <label id="graphify-auto-wrap" title="" class="field-inline btn-secondary">
+                            <input type="checkbox" id="graphify-auto-toggle" onchange="setGraphifyAutoRefresh(this.checked)">
+                            <span data-i18n="graphify_auto_label">Keep current automatically</span>
+                        </label></div>
+            </header>
+            <details class="page-help" data-help="graphify">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_graphify_1">Build the graph draws it and writes its map into the project; Delete graph removes it.</li>
+                    <li data-i18n="help_graphify_2">Your AIs use the same graph to see what a change will touch.</li>
+                </ul>
+            </details>
+            <div class="card">
+                <!-- Main Spacious Graphify Canvas Area -->
+                <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%;">
+                    <div id="graphify-studio-canvas-container" class="map-canvas" style="height: 750px; flex: none;">
+                        <div class="map-state" style="display:flex; position:static;">
+                            <i data-lucide="loader-2" class="spin"></i>
+                        </div>
+                    </div>
+
+                    <!-- Stats & Info Bar -->
+                    <div id="graphify-studio-status-bar" class="panel map-status">
+                        <div>
+                            <span id="graphify-studio-node-count">
+                                <i data-lucide="circle-dot" style="color:var(--brand-primary);"></i> <b>--</b> nodes
+                            </span>
+                            <span id="graphify-studio-edge-count">
+                                <i data-lucide="git-commit" style="color:var(--status-progress);"></i> <b>--</b> edges
+                            </span>
+                        </div>
+                        <div id="graphify-studio-updated-at" class="page-status" style="margin:0;">
+                            --
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SETTINGS VIEW -->
+        <section id="view-settings" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="settings"></i> <span data-i18n="title_settings">Settings</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_settings">Which pages you see, how the dashboard looks, and where PLUT_OS keeps its data.</p>
+                </div>
+            </header>
+
+            <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));">
+
+                <!-- LEFT COLUMN: Interface, Modules & Creator -->
+                <div>
+
+                    <!-- 1. Which pages the menu shows: the first thing an owner looks for here. -->
+                    <section class="card settings-pages">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="blocks"></i> <span data-i18n="settings_modules">Pages in the menu</span></h3></div>
+                        <p class="page-status" data-i18n="settings_modules_desc">Home, Board, Projects, Setup questions, Settings and Guide are always there. Turn on the other pages you use; turning one off only removes it from the menu, nothing is uninstalled.</p>
+                        <div id="module-toggles" class="check-list"></div>
+                    </section>
+
+                    <!-- 1b. The live orbit and its notices: each one the owner's to switch (orbit.js). -->
+                    <section class="card">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="orbit"></i> <span data-i18n="orbit_settings_title">Live orbit and notices</span></h3></div>
+                        <p class="page-status" data-i18n="orbit_settings_desc">How the dashboard shows the AIs connected to this project. Saved in this browser.</p>
+                        <div id="orbit-settings" class="check-list"></div>
+                    </section>
+
+                    <!-- 2. Interface & Preferences -->
+                    <section class="card">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="palette"></i> <span data-i18n="settings_theme">Theme & Preferences</span></h3></div>
+                        <div class="kv-grid">
+                            <label class="field">
+                                <span class="field-label" data-i18n="settings_theme_label">Visual Accent Theme</span>
+                                <select id="setting-theme" class="field-select" onchange="applyVisualTheme()">
+                                    <option value="default" data-i18n="settings_theme_default">Core amber (default)</option>
+                                    <option value="cyberpunk" data-i18n="settings_theme_cyberpunk">Orbit violet</option>
+                                    <option value="neon-blue" data-i18n="settings_theme_blue">Orbit blue</option>
+                                    <option value="emerald" data-i18n="settings_theme_emerald">Orbit teal</option>
+                                </select>
+                            </label>
+                            <label class="field">
+                                <span class="field-label" data-i18n="settings_refresh_label">Signal Auto-Refresh Rate</span>
+                                <select id="setting-refresh" class="field-select" onchange="applyRefreshRate()">
+                                    <option value="3000" data-i18n="settings_refresh_fast">Fast (3 seconds)</option>
+                                    <option value="5000" data-i18n="settings_refresh_med">Medium (5 seconds)</option>
+                                    <option value="10000" data-i18n="settings_refresh_slow">Slow (10 seconds)</option>
+                                    <option value="manual" data-i18n="settings_refresh_manual">Manual Only</option>
+                                </select>
+                            </label>
+                        </div>
+                    </section>
+
+                    <!-- 3. Creator / About -->
+                    <section class="card">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="user-round"></i> <span data-i18n="settings_about_title">Creator & Info</span></h3></div>
+                        <p class="card-sub" data-i18n="settings_about_desc">PLUT_OS is built and maintained by Zeatrex.</p>
+                        <div class="field-row">
+                            <a href="https://www.instagram.com/malikk.3d/" target="_blank" rel="noopener noreferrer" class="btn-secondary btn-sm">
+                                <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px; height:14px; flex-shrink:0;"><path d="M12 0C8.74 0 8.333.014 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.014 8.333 0 8.74 0 12s.014 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.014 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.014-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.014 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zM12 5.838c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z"></path></svg> Instagram
+                            </a>
+                            <a href="https://www.youtube.com/c/Zeatrex/" target="_blank" rel="noopener noreferrer" class="btn-secondary btn-sm">
+                                <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px; height:14px; flex-shrink:0;"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"></path></svg> YouTube
+                            </a>
+                            <a href="https://github.com/Zeatrex01" target="_blank" rel="noopener noreferrer" class="btn-secondary btn-sm">
+                                <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px; height:14px; flex-shrink:0;"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path></svg> GitHub
+                            </a>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- RIGHT COLUMN: system and storage locations -->
+                <div>
+
+                    <!-- Updates (ui/modules/updates.js): the network only on the button. -->
+                    <section class="card" id="settings-updates">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="cloud-download"></i> <span data-i18n="updates_title">Updates</span></h3></div>
+                        <p class="page-status" data-i18n="updates_desc">Checks only when you press the button. A copy from git compares with its branch; the portable app compares with the newest release.</p>
+                        <p id="update-status" class="page-status" style="font-weight:600;" data-i18n="updates_unchecked">Not checked yet.</p>
+                        <p id="update-detail" class="page-status" style="display:none; white-space:pre-wrap; font-size:0.75rem;"></p>
+                        <p id="update-checked-at" class="page-status" style="display:none; font-size:0.75rem;"></p>
+                        <div class="field-row">
+                            <button type="button" id="update-check" class="btn-secondary btn-sm" onclick="checkForUpdates()">
+                                <i data-lucide="refresh-cw"></i> <span data-i18n="updates_check">Check for updates</span>
+                            </button>
+                            <button type="button" id="update-now" class="btn-primary btn-sm" style="display:none;" onclick="applyUpdate()">
+                                <i data-lucide="download"></i> <span data-i18n="updates_now">Update now</span>
+                            </button>
+                            <a id="update-download" class="btn-primary btn-sm" style="display:none;" target="_blank" rel="noopener noreferrer">
+                                <i data-lucide="external-link"></i> <span data-i18n="updates_download">Download</span>
+                            </a>
+                        </div>
+                    </section>
+
+                    <!-- Install as an app: the browser's own install prompt (ui/modules/updates.js). -->
+                    <section class="card" id="settings-app">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="app-window"></i> <span data-i18n="app_title">Install as an app</span></h3></div>
+                        <p class="page-status" data-i18n="app_desc">Opens PLUT_OS in its own window, with its own icon, from the Start menu or the dock. The portable app keeps working as before.</p>
+                        <p id="app-install-status" class="page-status"></p>
+                        <div class="field-row">
+                            <button type="button" id="app-install" class="btn-primary btn-sm" style="display:none;" onclick="installApp()">
+                                <i data-lucide="app-window"></i> <span data-i18n="app_install">Install as an app</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <!-- 4. System Status, Storage & Maintenance -->
+                    <section class="card">
+                        <div class="card-head"><h3 class="card-title"><i data-lucide="hard-drive"></i> <span data-i18n="settings_storage_title">System & Storage Locations</span></h3></div>
+
+                        <!-- System Runtime Specs -->
+                        <div class="panel kv-grid" style="margin-bottom:0.85rem;">
+                            <div><span class="kv-label" data-i18n="settings_sys_os">OS:</span> <b id="settings-runtime-os" class="kv-value">—</b></div>
+                            <div><span class="kv-label" data-i18n="settings_sys_node">Node Server:</span> <b id="settings-runtime-node" class="kv-value" style="color:var(--status-done);">—</b></div>
+                            <div><span class="kv-label" data-i18n="settings_sys_conn">Connection:</span> <b id="settings-runtime-mode" class="kv-value" style="color:var(--status-done);">—</b></div>
+                        </div>
+
+                        <!-- Data Paths -->
+                        <ul class="plain-list" style="font-size:0.78rem;">
+                            <li><span class="kv-label" data-i18n="settings_storage_app">Application files:</span> <code id="settings-app-root" style="font-size:0.72rem;">—</code></li>
+                            <li><span class="kv-label" data-i18n="settings_storage_data">Stable user data:</span> <code id="settings-data-root" style="color:var(--status-done); font-size:0.72rem;">—</code></li>
+                            <li><span class="kv-label" data-i18n="settings_storage_project">Active project memory:</span> <code id="settings-project-data-root" style="font-size:0.72rem;">—</code></li>
+                            <li id="settings-project-data-mode" class="page-status" style="margin:0;">—</li>
+                        </ul>
+                        <p id="settings-storage-status" class="page-status" data-i18n="loading">Loading…</p>
+
+                        <!-- Maintenance Actions -->
+                        <div class="field-row" style="margin-top:0.85rem; border-top:1px solid var(--border-subtle); padding-top:0.8rem;">
+                            <button type="button" class="btn-primary btn-sm" onclick="repairProjectLinks()">
+                                <i data-lucide="wrench"></i> <span data-i18n="settings_repair_btn">Repair Links</span>
+                            </button>
+                            <button type="button" class="btn-secondary btn-sm btn-danger" onclick="clearSystemCache()">
+                                <i data-lucide="trash-2"></i> <span data-i18n="settings_sys_reset">Clear Cache</span>
+                            </button>
+                        </div>
+                    </section>
+
+                </div>
+
+            </div>
+        </section>
+
+        <!-- DOCS VIEW -->
+        <section id="view-docs" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="book-open"></i> <span data-i18n="tab_docs">Guide</span></h2>
+                    <p class="page-purpose" data-i18n="purpose_docs">How PLUT_OS works, from adding a project to following the work, and the words it uses.</p>
+                </div>
+            </header>
+
+            <!-- English only, like docs/GUIDE.md: the long reference text is not in the UI dictionary.
+                 The steps match Home's setup card, and the terms are the ones the pages use. -->
+            <div class="guide">
+                <section class="card">
+                    <div class="card-head"><h3 class="card-title"><i data-lucide="route"></i> Getting started</h3></div>
+                    <ol class="guide-steps">
+                        <li><b>Add the project</b> on <a href="#hub-view">Projects</a>. PLUT_OS reads the folder; nothing in it changes.</li>
+                        <li><b>Install the project kit</b>, also on Projects. It adds the shared board, memory and rules files your AIs use (listed below); your own files are not touched.</li>
+                        <li><b>Connect an AI tool</b>: Projects → Connect an AI. Each tool reads a different settings file; PLUT_OS writes the one yours reads. Reload the tool, and the top bar shows <i>AI: connected</i>.</li>
+                        <li><b>Let your AI read the project.</b> Tell it: <q>Read this project and write its map.</q> Every later session starts from that map.</li>
+                        <li><b>Give the first task</b> on the <a href="#board">Board</a> with Assign a task, and follow it on <a href="#overview">Home</a>.</li>
+                    </ol>
+                    <p class="page-status">Optional: five questions in <a href="#setup">Setup questions</a> that recommend tools.</p>
+                </section>
+
+                <section class="card">
+                    <div class="card-head"><h3 class="card-title"><i data-lucide="crown"></i> Who does what</h3></div>
+                    <p><b>You are the boss.</b> Your AI tools (Claude Code, Codex, Cursor, Gemini…) do the work, and each one manages only its own helpers. PLUT_OS never commands an AI: it gives them a shared place to work and shows you what is going on. Three shared files carry it:</p>
+                    <dl class="guide-terms">
+                        <dt>BOARD.md</dt><dd>The tasks: To do (with who it is for), In progress (someone claimed it), Done (with where the result is), Blocked (with what it waits on). It is the Board page.</dd>
+                        <dt>AGENT_BOARD.md</dt><dd>Notes and findings from the AIs' helpers. It is the Agent board tab on the Board.</dd>
+                        <dt>ROSTER.md</dt><dd>Every AI and helper on the project, and whose it is. To use another AI's helper, an AI leaves a suggestion on the board; that helper's owner decides.</dd>
+                    </dl>
+                </section>
+
+                <section class="card">
+                    <div class="card-head"><h3 class="card-title"><i data-lucide="map"></i> Where things are</h3></div>
+                    <dl class="guide-terms">
+                        <dt>Work</dt><dd><b>Home</b>: what needs you and the next step. <b>Board</b>: give and follow tasks. <b>Shared Table</b>: one job answered by several departments.</dd>
+                        <dt>Knowledge</dt><dd><b>Report</b>: what happened and what your AIs recorded. <b>Research</b>: research with saved sources. <b>Code map</b>, <b>Documents</b>, <b>Dependency graph</b>: maps of the project.</dd>
+                        <dt>Setup</dt><dd><b>Projects</b> (with Connect an AI and the extra tools your AI can set up), <b>Setup questions</b>, <b>Settings</b> and this Guide.</dd>
+                    </dl>
+                    <p class="page-status">Some pages are off until you need them: turn them on in <a href="#settings">Settings</a> → Pages in the menu. Nothing is uninstalled when a page is off.</p>
+                </section>
+
+                <section class="card">
+                    <div class="card-head"><h3 class="card-title"><i data-lucide="book-a"></i> The words PLUT_OS uses</h3></div>
+                    <dl class="guide-terms">
+                        <dt>Project kit</dt><dd>The shared files PLUT_OS adds to a project so your AIs share a board, a memory and rules.</dd>
+                        <dt>Watch-only</dt><dd>A project that is added but has no kit yet: PLUT_OS reads it and keeps its own records outside it.</dd>
+                        <dt>AI link (MCP)</dt><dd>How an AI tool talks to PLUT_OS. The top bar says whether one is connected, set up but waiting, or not set up; click it to see or fix it.</dd>
+                        <dt>Session</dt><dd>One stretch of work by one AI, from opening the project to recording what it did.</dd>
+                        <dt>Session memory</dt><dd>What an AI records when it finishes: what it did, decided and learned, with sources. The next AI starts from it; Report shows it, and marks what nobody checked.</dd>
+                        <dt>Approval</dt><dd>A question an AI asks before something it may not do alone. It appears at the top of every page until you answer.</dd>
+                        <dt>Result check</dt><dd>Whether someone recorded that finished work was checked, and where the evidence is.</dd>
+                    </dl>
+                </section>
+
+                <details class="card guide-more">
+                    <summary><i data-lucide="server"></i> For your AIs: the PLUT_OS tools they use</summary>
+                    <p>The dashboard is your side; your AIs reach the same things through PLUT_OS's MCP server once connected. The main ones:</p>
+                    <dl class="guide-terms">
+                        <dt translate="no">session_start / session_end</dt><dd>Read the brief at the start of a session; record what was done, decided and learned at the end.</dd>
+                        <dt translate="no">board_read / board_update</dt><dd>Read and update either board without editing the files by hand.</dd>
+                        <dt translate="no">plutos_ask</dt><dd>Ask you a question and wait for the answer (it appears as an approval).</dd>
+                        <dt translate="no">plutos_context_for_task</dt><dd>Which files to open first for a task.</dd>
+                        <dt translate="no">agent_register / roster_read</dt><dd>Register a helper; see who exists and whose they are.</dd>
+                        <dt translate="no">status_report / project_snapshot</dt><dd>The same report as the Report page; one file another AI can pick the work up from.</dd>
+                    </dl>
+                </details>
+
+                <details class="card guide-more">
+                    <summary><i data-lucide="folder-tree"></i> What the project kit adds to a project</summary>
+                    <pre class="guide-tree">Project-Root/
+ ┣ AGENTS.md              shared rules for every AI
+ ┣ PLUT_OS.bat            double-click: opens this dashboard on this project
+ ┣ .plutos/               PLUT_OS's own state for the project
+ ┣ docs/ai/               the generated code map
+ ┗ docs/handoff/
+   ┣ BOARD.md             the tasks
+   ┣ AGENT_BOARD.md       the helpers' notes
+   ┣ ROSTER.md            who is on the project
+   ┗ results/             documents the AIs produce</pre>
+                    <p class="page-status">Existing files are never overwritten. Connecting an AI is a separate step. The full guide is <code>docs/GUIDE.md</code>.</p>
+                </details>
+            </div>
+        </section>
+    </div>
+
+    <!-- ADD PROJECT MODAL — registration/inspection only. Installing the project kit and
+         connecting an AI are explicit follow-up actions in Project Hub. -->
+    <!-- The wizard is taller than a short viewport, so the card is a flex column:
+         fixed header, scrolling body, footer pinned inside the card. The action
+         buttons stay reachable no matter how small the window is. -->
+    <div id="install-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center; padding:1.25rem; box-sizing:border-box;">
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-subtle); border-radius:12px; width:500px; max-width:100%; max-height:100%; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <h2 style="color:var(--text-title); margin:0; padding:1.5rem 2rem 1rem; display:flex; align-items:center; gap:0.5rem; flex-shrink:0;"><i data-lucide="folder-plus"></i> <span data-i18n="install_title">Add a project</span></h2>
+
+            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:0.5rem 2rem 0;">
+            <div style="margin-bottom:1rem;">
+                <label class="field-label" style="display:block; margin-bottom:0.25rem;" data-i18n="install_path">Target Project Directory</label>
+                <input type="text" id="install-path" class="field-input" style="width:100%; font-family:var(--font-mono);">
+            </div>
+
+            <!-- In-page folder browser: navigate and pick a folder without any OS dialog -->
+            <div style="margin-bottom:1rem; border:1px solid var(--border-subtle); border-radius:6px; overflow:hidden;">
+                <div style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.5rem; background:var(--bg-primary); border-bottom:1px solid var(--border-subtle);">
+                    <button type="button" class="btn-secondary btn-sm" onclick="fsBrowseUp()" title="Up">↑</button>
+                    <span id="fs-current" style="font-family:monospace; font-size:0.8rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;"></span>
+                    <button type="button" class="btn-primary btn-sm" onclick="fsUseCurrent()" data-i18n="btn_use_folder">Use this folder</button>
+                </div>
+                <div id="fs-list" style="max-height:min(170px, 30vh); overflow-y:auto; background:var(--bg-primary);"></div>
+            </div>
+
+            <p style="color:var(--text-muted); font-size:0.8rem; margin:0 0 1.25rem; line-height:1.55;" data-i18n="install_auto_hint">PLUT_OS will read the folder and keep its generated map and tasks in the local Hub. It will not add AGENTS.md, .plutos, MCP files, editor settings, launchers, or .gitignore entries to the project.</p>
+
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:1rem; flex-shrink:0; padding:1rem 2rem 1.5rem; border-top:1px solid var(--border-subtle); background:var(--bg-secondary);">
+                <button type="button" id="install-dismiss" class="btn-secondary" onclick="document.getElementById('install-modal').style.display='none'" data-i18n="btn_cancel">Cancel</button>
+                <button type="button" class="btn-primary" onclick="executeInstall()"><i data-lucide="folder-check"></i> <span data-i18n="btn_inject">Add without modifying</span></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MOBILE BOTTOM NAVIGATION: at most five places; everything else is in the menu. -->
+    <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <button class="mob-tab-btn active" data-mob-view="overview" onclick="switchView('overview', this)">
+            <i data-lucide="home"></i>
+            <span data-i18n="tab_overview">Home</span>
+        </button>
+        <button class="mob-tab-btn" data-mob-view="board" onclick="switchView('board', this)" style="position: relative;">
+            <i data-lucide="kanban"></i>
+            <span data-i18n="tab_board">Board</span>
+            <span class="board-unread-dot" style="display: none;"></span>
+        </button>
+        <button class="mob-tab-btn" onclick="toggleSidebarMenu()">
+            <i data-lucide="menu"></i>
+            <span data-i18n="nav_menu">Menu</span>
+        </button>
+    </nav>
+
+    <script type="module" src="/ui/main.js"></script>
+</body>
+</html>
