@@ -69,7 +69,15 @@ export function publishCore({ source, target, dryRun = false }) {
     if (path.resolve(source) === path.resolve(target)) return { ok: false, reason: 'the target is the source repository' };
     if (git(target, ['status', '--porcelain']).trim()) return { ok: false, reason: `the target has uncommitted changes: commit or discard them first (${target})` };
     const plan = planPublish(source, target);
-    const findings = scanRelease(source, { files: [...plan.changed, ...plan.seed.map(f => `${SEEDS}/${f}`)] }).filter(f => BLOCKING.includes(f.kind) && !ATTRIBUTION(f));
+    // A finding's text is cut to 160 characters; the attribution check reads the whole line, so a
+    // link at the end of a long line is still seen.
+    const lines = new Map();
+    const fullLine = f => {
+        if (!lines.has(f.file)) { try { lines.set(f.file, fs.readFileSync(path.join(source, f.file), 'utf8').split(/\r?\n/)); } catch { lines.set(f.file, []); } }
+        return lines.get(f.file)[f.line - 1] ?? f.text;
+    };
+    const findings = scanRelease(source, { files: [...plan.changed, ...plan.seed.map(f => `${SEEDS}/${f}`)] })
+        .filter(f => BLOCKING.includes(f.kind) && !ATTRIBUTION({ ...f, text: fullLine(f) }));
     if (findings.length) return { ok: false, reason: 'the release scan found something that must not be published', findings, ...plan };
     if (!dryRun) {
         for (const f of plan.changed) {
