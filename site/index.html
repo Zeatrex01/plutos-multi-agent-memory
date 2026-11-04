@@ -58,7 +58,7 @@ nav .btn { padding: 8px 14px; font-size: 14px; color: #1b1208; }
 .actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .system { position: relative; aspect-ratio: 1; width: 100%; max-width: 560px; justify-self: center; }
 .system svg { width: 100%; height: 100%; overflow: visible; }
-.sat-label { font: 600 13px var(--mono); fill: var(--title); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+.sat-label { font: 600 13px var(--mono); fill: var(--title); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; transition: opacity .35s; }
 .ticker { position: absolute; left: 50%; bottom: 2%; transform: translateX(-50%); width: min(92%, 420px); }
 .event { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 12px; background: rgba(17,26,46,.88); border: 1px solid var(--border-2); font-size: 14px; color: var(--title); box-shadow: 0 10px 40px rgba(0,0,0,.4); opacity: 0; transform: translateY(8px); transition: opacity .4s, transform .4s; }
 .event.on { opacity: 1; transform: none; }
@@ -187,9 +187,13 @@ footer .brand { font-size: 13px; }
   section.band { padding: 80px 0; }
   .scroll-hint { display: none; }
 }
+/* Reduced motion (Windows "Animation effects" off sets it): the demos keep running, slower,
+   and nothing slides, scales or scrolls smoothly. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-  .reveal { opacity: 1; transform: none; }
+  html { scroll-behavior: auto; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .scene, .event { transform: none; }
+  .scroll-hint::after, .typing::after { animation: none; }
 }
 </style>
 </head>
@@ -457,7 +461,8 @@ node dashboard.mjs --open</pre>
 
 <script>
 (function () {
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Reduced motion means calmer, not frozen: the orbits and demos are what the page explains with.
+  var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches, reduce = false, pace = calm ? .45 : 1;
   var NS = 'http://www.w3.org/2000/svg';
   var el = function (tag, attrs, parent) { var n = document.createElementNS(NS, tag); for (var k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
 
@@ -498,8 +503,10 @@ node dashboard.mjs --open</pre>
     a.g = el('g', {}, sats);
     el('circle', { r: 14, fill: a.color, opacity: .18 }, a.g);
     el('circle', { r: 7, fill: a.color }, a.g);
-    var label = el('text', { 'class': 'sat-label', x: 14, y: 4 }, a.g); label.textContent = a.name;
+    a.label = el('text', { 'class': 'sat-label', x: 14, y: 4 }, null); a.label.textContent = a.name;
   });
+  var labels = el('g', {}, svg);
+  AIS.forEach(function (a) { labels.appendChild(a.label); });
   var core = document.getElementById('core');
   function pulse(color) {
     var ring = el('circle', { r: 62, fill: 'none', stroke: color, 'stroke-width': 3, opacity: .9 }, pulses);
@@ -509,14 +516,20 @@ node dashboard.mjs --open</pre>
     core.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 600 });
   }
   function place(a, now) {
-    var t = a.t + (reduce ? 0 : now / 1000 * a.speed), r = a.tilt * Math.PI / 180;
+    var t = a.t + now / 1000 * a.speed * pace, r = a.tilt * Math.PI / 180;
     var x = a.rx * Math.cos(t), y = a.ry * Math.sin(t);
     var X = x * Math.cos(r) - y * Math.sin(r), Y = x * Math.sin(r) + y * Math.cos(r);
     a.g.setAttribute('transform', 'translate(' + X.toFixed(1) + ' ' + Y.toFixed(1) + ')');
+    a.label.setAttribute('transform', 'translate(' + X.toFixed(1) + ' ' + Y.toFixed(1) + ')');
     var behind = Math.sin(t) < 0;
     if (behind && a.g.parentNode !== back) back.appendChild(a.g);
     if (!behind && a.g.parentNode !== sats) sats.appendChild(a.g);
     a.g.style.opacity = behind ? .6 : 1;
+    // A label never sits on the core: hidden while its box touches it, faded while behind.
+    var lx = X + 14, ly = Y - 12, lw = a.name.length * 8.5, lh = 18;
+    var nx = Math.max(lx, Math.min(0, lx + lw)), ny = Math.max(ly, Math.min(0, ly + lh));
+    var onCore = Math.hypot(nx, ny) < 72;
+    a.label.style.opacity = onCore ? 0 : behind ? .45 : 1;
   }
   function frame(now) { drawStars(now); AIS.forEach(function (a) { place(a, now); }); if (!reduce) requestAnimationFrame(frame); }
   requestAnimationFrame(frame);
@@ -589,7 +602,7 @@ node dashboard.mjs --open</pre>
   function counts() { for (var k in cols) cols[k].querySelector('[data-count]').textContent = cols[k].querySelectorAll('.task').length; }
   function move(card, to) {
     var a = card.getBoundingClientRect(); cols[to].appendChild(card); var b = card.getBoundingClientRect();
-    if (!reduce && card.animate) card.animate([{ transform: 'translate(' + (a.left - b.left) + 'px,' + (a.top - b.top) + 'px)' }, { transform: 'none' }], { duration: 650, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    if (!reduce && card.animate) card.animate([{ transform: 'translate(' + (a.left - b.left) + 'px,' + (a.top - b.top) + 'px)' }, { transform: 'none' }], { duration: calm ? 900 : 650, easing: 'cubic-bezier(.2,.8,.2,1)' });
     counts();
   }
   var plan = [[0, 'doing'], [1, 'doing'], [2, 'doing'], [2, 'done'], [3, 'doing'], [0, 'done'], [4, 'doing'], [1, 'done'], [3, 'done'], [4, 'done']], pi = 0, boardTimer = null;
