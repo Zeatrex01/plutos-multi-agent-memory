@@ -927,7 +927,7 @@ restart or reload Claude Code after either change.
 
 ### AI costs — what this project's AI work used
 
-Knowledge → **AI costs** shows the open project's own ledger: Claude Code's records for this folder,
+Turn the page on once in Settings → **Pages in the menu** (it is off by default). Knowledge → **AI costs** then shows the open project's own ledger: Claude Code's records for this folder,
 read on this computer, split by agent, model and session (work is output plus thinking; cache reads are
 shown apart). Nothing is installed or downloaded and nothing leaves the machine. Below it, **Run CodeBurn**
 asks the optional CodeBurn tracker (`npm i -g codeburn`) for its cost estimate. CodeBurn adds up every

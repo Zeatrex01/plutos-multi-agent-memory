@@ -20,8 +20,9 @@ export const MODULES = [
     // id = the switchView() view id, which is also the data-module value on the tab button.
     { id: 'research',  labelKey: 'tab_research',  descKey: 'module_desc_research',  defaultOn: true },
     { id: 'report',    labelKey: 'tab_report',    descKey: 'module_desc_report',    defaultOn: true },
-    // On by default: the project's own ledger reads local files only; CodeBurn waits for its button.
-    { id: 'costs',     labelKey: 'tab_codeburn',  descKey: 'module_desc_codeburn',  defaultOn: true },
+    // Off by default, as before: the owner switches the AI costs page on here. Once on, the project's
+    // own ledger reads local files only and CodeBurn waits for its button.
+    { id: 'costs',     labelKey: 'tab_codeburn',  descKey: 'module_desc_codeburn',  defaultOn: false },
     { id: 'codeindex', labelKey: 'tab_codeindex', descKey: 'module_desc_codeindex', defaultOn: true },
     { id: 'dochub',    labelKey: 'tab_dochub',    descKey: 'module_desc_dochub',    defaultOn: true },
     // Off by default: Graphify is an extra map you switch on, not part
@@ -58,8 +59,11 @@ function readStored() {
         // the user had been offered, so reading it as known preserves the one behavior that
         // form got right — a module added after the choice still gets its default — and the
         // next write upgrades the record, after which off is durable.
-        if (Array.isArray(parsed)) return { on: parsed, known: parsed };
-        if (parsed && Array.isArray(parsed.on) && Array.isArray(parsed.known)) return parsed;
+        // The AI costs page was the module 'codeburn' before 2026-11-04; a choice saved then
+        // still counts under its new id.
+        const renamed = ids => ids.map(id => id === 'codeburn' ? 'costs' : id);
+        if (Array.isArray(parsed)) return { on: renamed(parsed), known: renamed(parsed) };
+        if (parsed && Array.isArray(parsed.on) && Array.isArray(parsed.known)) return { on: renamed(parsed.on), known: renamed(parsed.known) };
         return null;
     } catch (e) { return null; }
 }

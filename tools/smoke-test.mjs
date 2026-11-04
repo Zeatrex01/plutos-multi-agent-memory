@@ -3385,33 +3385,36 @@ for (let i = 0; i < n; i++) {
 
                 // The default set names every defaultOn module; Skills joined it on 2026-11-04 (the
                 // Skills page, canonical architecture item 9), so it is part of every expected set here.
-                check('modules: no stored choice yields the defaults', on() === 'codeindex,costs,council,dochub,report,research,skills', on());
+                check('modules: no stored choice yields the defaults', on() === 'codeindex,council,dochub,report,research,skills', on());
 
                 globalThis.window.toggleModule('report', false);
-                check('modules: switching Report off actually switches it off', on() === 'codeindex,costs,council,dochub,research,skills', on());
+                check('modules: switching Report off actually switches it off', on() === 'codeindex,council,dochub,research,skills', on());
                 // The regression was only visible on the NEXT read, so re-read rather than
                 // trusting the value the handler happened to return.
-                check('modules: Report stays off across a reload', on() === 'codeindex,costs,council,dochub,research,skills', on());
+                check('modules: Report stays off across a reload', on() === 'codeindex,council,dochub,research,skills', on());
 
                 globalThis.window.toggleModule('dochub', false);
                 globalThis.window.toggleModule('council', false);
                 globalThis.window.toggleModule('research', false);
                 globalThis.window.toggleModule('skills', false);
-                check('modules: every defaultOn module can be switched off', on() === 'codeindex,costs', on());
+                check('modules: every defaultOn module can be switched off', on() === 'codeindex', on());
 
                 globalThis.window.toggleModule('report', true);
-                check('modules: switching one back on leaves the others off', on() === 'codeindex,costs,report', on());
+                check('modules: switching one back on leaves the others off', on() === 'codeindex,report', on());
 
                 // A module added after the user saved a choice must still arrive at its
                 // default — the one thing the old bare-array form got right, so a fix that
                 // simply obeys storage verbatim would break it.
                 store.set('plutos-modules', JSON.stringify({ on: ['codeindex'], known: ['codeindex'] }));
                 check('modules: a module the user never saw still gets its default',
-                    on() === 'codeindex,costs,council,dochub,report,research,skills', on());
+                    on() === 'codeindex,council,dochub,report,research,skills', on());
                 // Same for storage written by an older build, which had no `known` half.
                 store.set('plutos-modules', JSON.stringify(['report', 'codeindex']));
+                store.set('plutos-modules', JSON.stringify({ on: ['codeindex', 'codeburn'], known: ['codeindex', 'codeburn'] }));
+                check('modules: the AI costs page switched on under its old id stays on', mod.enabledModules().includes('costs'), on());
+                store.set('plutos-modules', JSON.stringify(['report', 'codeindex']));
                 check('modules: storage from an older build still upgrades cleanly',
-                    on() === 'codeindex,costs,council,dochub,report,research,skills', on());
+                    on() === 'codeindex,council,dochub,report,research,skills', on());
             } finally {
                 globalThis.localStorage = saved.localStorage;
                 globalThis.window = saved.window;
