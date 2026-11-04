@@ -19,6 +19,8 @@ import { fetchCouncil } from './council.js';
 import { fetchGraphifyStudio } from './graphify.js';
 import { fetchSkills } from './skills.js';
 import { renderModuleToggles } from './features.js';
+import { fetchCodeburn } from './codeburn.js';
+import { fetchUsage } from './usage.js';
 
 const viewSection = id => id && (document.getElementById(id) || document.getElementById('view-' + id));
 
@@ -71,6 +73,7 @@ window.switchView = function(viewId, btn, fromHistory) {
     if(viewId === 'board') { fetchBoard(); fetchWatcher(); fetchHooks(); }
     if(viewId === 'codeindex') fetchCodeIndex();
     if(viewId === 'report') { fetchReport(); fetchSessionMemory('report-memory'); }
+    if(viewId === 'costs') { fetchUsage(); fetchCodeburn(); }
     if(viewId === 'dochub') fetchDocHubData();
     if(viewId === 'graphify') fetchGraphifyStudio();
     // Skill folders are read off disk on every visit: a pack switched on in the terminal shows up.

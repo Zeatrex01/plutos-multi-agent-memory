@@ -835,6 +835,13 @@ try {
                 withSubs.projects.find(p => p.name === '-a-mine').output >= 67);
             check('the main thread stays in the table so the proportions do not lie',
                 withSubs.agents.some(a => a.main === true));
+            // The AI costs page reads only the open project, and holds that reading for the cache window
+            // so switching tabs does not re-read a long project's transcripts; force reads again.
+            const p1 = usage.readTokenUsage('/a/mine', { force: true, onlyProject: true });
+            check('the project ledger reads only the open project', p1.projects.every(p => p.name === '-a-mine') && p1.totals.output >= 67, JSON.stringify(p1.projects.map(p => p.name)));
+            check('a second read within the window is the cached one', usage.readTokenUsage('/a/mine', { onlyProject: true }) === p1);
+            check('force reads again', usage.readTokenUsage('/a/mine', { force: true, onlyProject: true }) !== p1);
+            check('the whole-machine reading is held apart from the project one', usage.readTokenUsage('/a/mine', { onlyProject: false }) !== p1);
         } finally {
             if (realHome === undefined) delete process.env.HOME; else process.env.HOME = realHome;
             if (realProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = realProfile;
@@ -3378,33 +3385,33 @@ for (let i = 0; i < n; i++) {
 
                 // The default set names every defaultOn module; Skills joined it on 2026-11-04 (the
                 // Skills page, canonical architecture item 9), so it is part of every expected set here.
-                check('modules: no stored choice yields the defaults', on() === 'codeindex,council,dochub,report,research,skills', on());
+                check('modules: no stored choice yields the defaults', on() === 'codeindex,costs,council,dochub,report,research,skills', on());
 
                 globalThis.window.toggleModule('report', false);
-                check('modules: switching Report off actually switches it off', on() === 'codeindex,council,dochub,research,skills', on());
+                check('modules: switching Report off actually switches it off', on() === 'codeindex,costs,council,dochub,research,skills', on());
                 // The regression was only visible on the NEXT read, so re-read rather than
                 // trusting the value the handler happened to return.
-                check('modules: Report stays off across a reload', on() === 'codeindex,council,dochub,research,skills', on());
+                check('modules: Report stays off across a reload', on() === 'codeindex,costs,council,dochub,research,skills', on());
 
                 globalThis.window.toggleModule('dochub', false);
                 globalThis.window.toggleModule('council', false);
                 globalThis.window.toggleModule('research', false);
                 globalThis.window.toggleModule('skills', false);
-                check('modules: every defaultOn module can be switched off', on() === 'codeindex', on());
+                check('modules: every defaultOn module can be switched off', on() === 'codeindex,costs', on());
 
                 globalThis.window.toggleModule('report', true);
-                check('modules: switching one back on leaves the others off', on() === 'codeindex,report', on());
+                check('modules: switching one back on leaves the others off', on() === 'codeindex,costs,report', on());
 
                 // A module added after the user saved a choice must still arrive at its
                 // default — the one thing the old bare-array form got right, so a fix that
                 // simply obeys storage verbatim would break it.
                 store.set('plutos-modules', JSON.stringify({ on: ['codeindex'], known: ['codeindex'] }));
                 check('modules: a module the user never saw still gets its default',
-                    on() === 'codeindex,council,dochub,report,research,skills', on());
+                    on() === 'codeindex,costs,council,dochub,report,research,skills', on());
                 // Same for storage written by an older build, which had no `known` half.
                 store.set('plutos-modules', JSON.stringify(['report', 'codeindex']));
                 check('modules: storage from an older build still upgrades cleanly',
-                    on() === 'codeindex,council,dochub,report,research,skills', on());
+                    on() === 'codeindex,costs,council,dochub,report,research,skills', on());
             } finally {
                 globalThis.localStorage = saved.localStorage;
                 globalThis.window = saved.window;
@@ -3434,6 +3441,7 @@ for (let i = 0; i < n; i++) {
     // point. Undeclared, they answered 400 with a shape nothing else in the API returns.
     {
         const { routeNeedsProject, PROJECT_WRITE_ROUTES } = await import('../lib/route-policy.mjs');
+        check('the AI costs ledger needs an open project', routeNeedsProject('GET /api/usage'));
         check('graphify read routes are declared project-scoped',
             routeNeedsProject('GET /api/graphify'));
         check('graphify write routes refuse loudly rather than silently',

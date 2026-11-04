@@ -1021,3 +1021,36 @@ div.vis-tooltip { background: var(--bg-surface); color: var(--text-title); borde
 .app-toast.in { opacity: 1; transform: none; }
 .app-toast i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--toast); box-shadow: 0 0 8px var(--toast); }
 @media (prefers-reduced-motion: reduce) { .app-toast { transform: none; transition: opacity .2s; } }
+
+/* AI costs page: the project ledger (ui/modules/usage.js) */
+/* ---------- Local token ledger (spend tab, second half) ---------- */
+.usage-heads { display: flex; gap: 0.7rem; flex-wrap: wrap; }
+.usage-head {
+    flex: 1 1 130px; background: var(--bg-primary); border: 1px solid var(--border-subtle);
+    border-radius: 10px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.15rem;
+}
+.usage-head b { color: var(--text-title); font-family: var(--font-mono); font-size: 1.15rem; }
+.usage-head span { color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.usage-head.dim b { color: var(--text-muted); font-weight: 500; }
+.usage-note { color: var(--text-muted); font-size: 0.76rem; margin: 0.7rem 0 0 0; }
+.usage-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.usage-table th {
+    text-align: left; color: var(--text-muted); font-weight: 500; font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.05em; padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border-subtle); white-space: nowrap;
+}
+.usage-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border-subtle); color: var(--text-body); }
+.usage-table td:first-child { position: relative; color: var(--text-title); min-width: 170px; }
+.usage-table .num { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.usage-table .strong { color: var(--text-title); font-weight: 700; }
+/* Cache columns are reported but never ranked by — see ui/modules/usage.js. Muted so the eye
+   does not read the biggest number on the row as the important one. */
+.usage-table .dim { color: var(--text-muted); }
+.usage-table tr.is-current td { background: var(--status-progress-bg, rgba(59,130,246,0.08)); }
+/* Proportion of the top row's work, drawn behind the name rather than in its own column. */
+.usage-bar {
+    position: absolute; left: 0; top: 2px; bottom: 2px; width: var(--w, 0%);
+    background: var(--brand-primary); opacity: 0.13; border-radius: 3px; pointer-events: none;
+}
+.usage-table td:first-child span { position: relative; }
+

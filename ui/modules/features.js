@@ -20,6 +20,8 @@ export const MODULES = [
     // id = the switchView() view id, which is also the data-module value on the tab button.
     { id: 'research',  labelKey: 'tab_research',  descKey: 'module_desc_research',  defaultOn: true },
     { id: 'report',    labelKey: 'tab_report',    descKey: 'module_desc_report',    defaultOn: true },
+    // On by default: the project's own ledger reads local files only; CodeBurn waits for its button.
+    { id: 'costs',     labelKey: 'tab_codeburn',  descKey: 'module_desc_codeburn',  defaultOn: true },
     { id: 'codeindex', labelKey: 'tab_codeindex', descKey: 'module_desc_codeindex', defaultOn: true },
     { id: 'dochub',    labelKey: 'tab_dochub',    descKey: 'module_desc_dochub',    defaultOn: true },
     // Off by default: Graphify is an extra map you switch on, not part

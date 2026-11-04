@@ -46,6 +46,8 @@ import { managementRoutes, assertBoardProject, projectCoordinationRoot } from '.
 import { researchRoutes } from './lib/research/routes.mjs';
 import { councilRoutes } from './lib/council-routes.mjs';
 import { updateRoutes } from './lib/update-routes.mjs';
+import { getProjectSpend, runProjectSpend } from './lib/spend.mjs';
+import { readTokenUsage } from './lib/usage.mjs';
 import { applyApprovedSideEffects } from './lib/approval-effects.mjs';
 import { SKILL_HOMES, PACK_ID_RE, scanProjectSkills, listPacks, registerPack, forgetPack, activatePack, deactivatePack, readActivation } from './lib/skills.mjs';
 
@@ -510,6 +512,24 @@ const routes = {
     // every open dashboard, so it stays a directory scan of small files and nothing more —
     // no git, no markdown parsing, no project scan. An unanswered question means an agent is
     // sitting idle, which is why the UI shows it over whatever tab you are on.
+    // AI costs. The project's own ledger: Claude Code's transcripts for the open project only,
+    // read off this machine, no network and no outside tool.
+    'GET /api/usage': (req, res, url) => {
+        const force = !!(url && url.searchParams && url.searchParams.get('force'));
+        sendJson(res, 200, readTokenUsage(workspaces.getActiveWorkspace(), { force, onlyProject: true }));
+    },
+    // CodeBurn's machine-wide figures: GET answers with the last run (or standby) and never
+    // starts CodeBurn; POST /api/spend/run is the owner's button. CodeBurn is run with npx --no,
+    // so a machine without it gets standby, never a download.
+    'GET /api/spend': (req, res, url) => {
+        const p = url && url.searchParams ? url.searchParams : null;
+        sendJson(res, 200, getProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
+    },
+    'POST /api/spend/run': (req, res, url) => {
+        const p = url && url.searchParams ? url.searchParams : null;
+        sendJson(res, 200, runProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
+    },
+
     'GET /api/approvals': (req, res) => {
         try {
             const expected = new URL(req.url, 'http://localhost').searchParams.get('project');

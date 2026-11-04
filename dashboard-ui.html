@@ -237,6 +237,9 @@
             <button class="tab-btn" data-module="report" onclick="switchView('report', this)">
                 <i data-lucide="presentation"></i> <span data-i18n="tab_report">Report</span>
             </button>
+            <button class="tab-btn" data-module="costs" onclick="switchView('costs', this)">
+                <i data-lucide="flame"></i> <span data-i18n="tab_codeburn">AI costs</span>
+            </button>
             <button class="tab-btn" data-module="research" onclick="switchView('research', this)">
                 <i data-lucide="telescope"></i> <span data-i18n="tab_research">Research</span>
             </button>
@@ -425,6 +428,32 @@
         </section>
 
         <!-- REPORT VIEW (status report — the third map: where we are) -->
+        <!-- AI COSTS — the project's own ledger first (Claude Code's records for this folder, no
+             network), then CodeBurn's machine-wide figures, run only from its button. -->
+        <section id="view-costs" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title"><i data-lucide="flame"></i> <span data-i18n="codeburn_title">AI costs</span></h2>
+                    <p class="page-purpose" data-i18n="usage_desc">Who spent what in this project, split by agent, model and session, read from this machine.</p>
+                </div>
+                <div class="page-actions"><button onclick="refreshUsage()" class="btn-secondary">
+                    <i data-lucide="refresh-cw"></i> <span data-i18n="btn_refresh_data">Refresh Data</span>
+                </button></div>
+            </header>
+            <details class="page-help" data-help="costs">
+                <summary data-i18n="page_help_summary">How this page works</summary>
+                <ul>
+                    <li data-i18n="help_costs_1">The ledger at the top is this project's own.</li>
+                    <li data-i18n="help_costs_2">CodeBurn below is optional and machine-wide; it runs only when you ask.</li>
+                </ul>
+            </details>
+            <div id="usage-container"><p data-i18n="loading">Loading…</p></div>
+            <h3 style="color: var(--text-title); display:flex; align-items:center; gap:0.5rem; margin:2.2rem 0 0.8rem; font-size:1.05rem;">
+                <i data-lucide="flame"></i> <span>CodeBurn</span>
+            </h3>
+            <div id="codeburn-container"><p data-i18n="loading">Loading…</p></div>
+        </section>
+
         <section id="view-report" class="view-section">
             <header class="page-head">
                 <div class="page-head-text">

@@ -925,6 +925,15 @@ Claude CLI account already on the machine, so it uses that subscription or API u
 provider policy can change). Turning the switch off removes only PLUT_OS's two handlers;
 restart or reload Claude Code after either change.
 
+### AI costs — what this project's AI work used
+
+Knowledge → **AI costs** shows the open project's own ledger: Claude Code's records for this folder,
+read on this computer, split by agent, model and session (work is output plus thinking; cache reads are
+shown apart). Nothing is installed or downloaded and nothing leaves the machine. Below it, **Run CodeBurn**
+asks the optional CodeBurn tracker (`npm i -g codeburn`) for its cost estimate. CodeBurn adds up every
+project on the computer, which the card says, and it runs only when you press the button. Other AI tools
+(Codex, Cursor, Gemini CLI) keep their records elsewhere and are not in the ledger yet.
+
 ### The Status Report — the third map
 
 PROJECT_MAP answers "what is this project", CODEINDEX answers "where does the code live"
