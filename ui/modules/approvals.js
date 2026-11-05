@@ -41,6 +41,11 @@ function card(q, projectRoot) {
         </div>
         <div class="ask-q">${escHtml(q.question)}</div>
         ${q.context ? `<div class="ask-ctx">${escHtml(q.context)}</div>` : ''}
+        ${(q.images || []).length ? `<div class="ask-images">${q.images.map((src, i) => {
+            const url = `/api/approvals/image?project=${encodeURIComponent(projectRoot)}&path=${encodeURIComponent(src)}`;
+            const label = (q.options || [])[i] || String(i + 1);
+            return `<a class="ask-image" href="${escHtml(url)}" target="_blank" rel="noopener"><span>${escHtml(label)}</span><img src="${escHtml(url)}" alt="${escHtml(label)}" loading="lazy"></a>`;
+        }).join('')}</div>` : ''}
         <input class="field-input field-sm ask-note" id="ask-note-${escHtml(q.id)}" type="text"
                placeholder="${t('approval_note_ph')}" autocomplete="off">
         ${approvable ? '' : `<div class="ask-desk-only">${t('approval_desk_only')}</div>`}

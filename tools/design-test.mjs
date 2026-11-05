@@ -90,12 +90,17 @@ try {
     });
     check('a page without a Tokens block reads as no tokens, not as an error', () => {
         const odd = project('odd', { 'a.html': '<p></p>', 'docs/ai/DESIGN.md': '# DESIGN.md\n## Direction\nCalm.\n' });
-        assert.deepEqual(readDesign(odd), { updated: '', tokens: [], decisions: 0, template: true });
+        assert.deepEqual(readDesign(odd), { updated: '', tokens: [], decisions: 0, picks: 0, template: true });
     });
     check('an unfilled template copied in is named as the template, not as a page to follow', () => {
         const raw = project('raw', { 'a.html': '<p></p>', 'docs/ai/DESIGN.md': fs.readFileSync(DESIGN_TEMPLATE, 'utf8') });
         assert.equal(readDesign(raw).template, true);
         assert.match(designBriefLines(raw).join('\n'), /is still the unfilled template/);
+    });
+    check('owner picks are counted and named first in the brief line', () => {
+        const picked = project('picked', { 'a.html': '<p></p>', 'docs/ai/DESIGN.md': PAGE + '\n## Owner picks\n- 2026-11-05 · Today · A dense list / B one card · picked B · "less text" · one framed card\n' });
+        assert.equal(readDesign(picked).picks, 1);
+        assert.match(designBriefLines(picked).join('\n'), /1 owner pick\(s\), follow them first/);
     });
     check('a DESIGN.md without UI files yet still gets its line', () => {
         const early = project('early', { 'README.md': '', 'docs/ai/DESIGN.md': PAGE });

@@ -6,10 +6,15 @@ project, and extended with reasons by every AI after it. Leave what you do not k
 it from a default. -->
 
 ## The project (sources)
+- Users' language (all UI copy): …
 - Who uses it and for what: … (source: file:line, or "owner said, <date>")
 - What it shows (content, data density): …
 - Where it is used (device, setting, light, how long a session): …
 - What must never be confusing or slow here: …
+
+## Owner picks
+A/B design picks the owner made by eye (newest first); they outrank defaults on look, never accessibility.
+- YYYY-MM-DD · screen · A varied … / B varied … · picked A|B|Neither · owner's note · what it suggests
 
 ## Direction
 3-5 sentences: the feel this project needs and why, each tied to a line above.

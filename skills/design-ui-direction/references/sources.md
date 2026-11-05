@@ -32,3 +32,16 @@ Full report: "Proje başı hızlı tasarım kontrolleri" (owner's reports folder
 | GOV.UK Design System | One primary button per page; avoid disabled buttons | P |
 | Apple HIG, Material 3 (via secondary sources); WCAG 2.2 | 44 pt / 48 dp targets; 24 px AA minimum | P |
 | Figma 2019 (vendor) | Work with a design system finished 34% faster; quality not scored | M, vendor |
+
+## First-glance checks F1-F15 (research of 2026-11-05)
+
+Full report: "İlk bakış tasarım ilkeleri" (owner's reports folder, not in the repository). The figures the F checks rest on:
+
+| Source | Supports | Level |
+|---|---|---|
+| Morkes and Nielsen 1997 (NN/g, 51 users) | Concise text +58%, scannable +47%, objective +27%, all three +124% usability | M, old |
+| Weinreich et al. 2008 (data 2005, 25 users, 45,237 page views; NN/g "How little do users read") | Users read at most 28% of a page's words, about 20% in practice; about half only on pages of 111 words or fewer | M, old |
+| Lindgaard et al. 2006; Tuch et al. 2012 (119 sites); Reinecke et al. CHI 2013 (548 raters, 450 sites) | Appeal forms in 17-50 ms; low complexity plus a familiar layout liked most; complexity explains much of appeal | M (appeal, not comprehension) |
+| NN/g visual hierarchy, F-pattern (2006, 2017), common region, progressive disclosure | Most important element biggest; at most 2 large elements, 3 type sizes, 3 contrast levels; squint test; one region set apart | P |
+| MIT 2023 (PNAS, 105 lawyers) | Plain language preferred even by experts (legal text) | M, other domain |
+| Owner's blind picks, 2026-11-05 (`docs/evals/design-ui-direction-results-2026-11-05.md` in the PLUT_OS repository) | Apps: the skill's harder look lost 4 of 4 screens; games: it won 2 of 2 | O, one rater |

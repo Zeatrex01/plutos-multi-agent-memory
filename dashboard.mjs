@@ -29,7 +29,7 @@ import { QUESTIONS, parseInterview, recommend, renderInterview } from './lib/int
 import { scanProject, buildRecommendation } from './lib/recommend.mjs';
 import { getActivity } from './lib/activity.mjs';
 import { writeBoardEntry, boardTier } from './lib/board-store.mjs';
-import { listApprovals, answerApproval, approvalTier, tierAllows } from './lib/approvals.mjs';
+import { listApprovals, answerApproval, approvalTier, tierAllows, designPickImagePath } from './lib/approvals.mjs';
 import { routeNeedsProject, PROJECT_WRITE_ROUTES, PROJECT_PAGE_ROUTES, NO_PROJECT_READ_PAYLOAD, NO_PROJECT_MESSAGE } from './lib/route-policy.mjs';
 import { readIdeas, addIdea } from './lib/ideas.mjs';
 import { openBrowser } from './lib/open-browser.mjs';
@@ -540,6 +540,21 @@ const routes = {
                     .map(ticket => ({ ...ticket, approvableHere: tierAllows(approvalTier(ticket.action), via) })) });
         } catch (error) {
             sendJson(res, /changed/i.test(error.message) ? 409 : 400, { success: false, message: error.message });
+        }
+    },
+
+    // An image a question shows (an A/B design pick): only a render under docs/ai/design-picks/ of
+    // the open project, checked by the same function that checked it when the ticket was made.
+    'GET /api/approvals/image': (req, res) => {
+        try {
+            const params = new URL(req.url, 'http://localhost').searchParams;
+            const projectRoot = assertBoardProject({ projectRoot: params.get('project') });
+            const file = designPickImagePath(projectCoordinationRoot(projectRoot), params.get('path') || '');
+            const type = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }[path.extname(file).toLowerCase()];
+            res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+            res.end(fs.readFileSync(file));
+        } catch (error) {
+            sendJson(res, 404, { success: false, message: error.message });
         }
     },
 

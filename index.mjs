@@ -170,7 +170,8 @@ const TOOLS = [
         context: { type: "string", description: "One line of what happens next if approved, so the owner can decide without opening the code." },
         ticket: { type: "string", description: "Resume waiting on a question you already asked. Pass the id from a PENDING reply; leave empty to ask a new one." },
         ttl_minutes: { type: "number", description: "How long the question stays answerable (default 30, max 1440). After that it expires and you must treat it as NOT approved." },
-        options: { type: "array", items: { type: "string" }, description: "Up to 5 concrete routes the owner can pick from, e.g. [\"Split by subsystem\", \"Split by risk\", \"One task, no split\"]. Each becomes a button. Use this instead of listing choices inside the question and hoping the free-text answer comes back parseable — the reply names the option verbatim. Omit for a plain yes/no." }
+        options: { type: "array", items: { type: "string" }, description: "Up to 5 concrete routes, e.g. [\"Split by risk\", \"One task\"]. Each becomes a button; the reply names the option verbatim. Omit for a plain yes/no." },
+        images: { type: "array", items: { type: "string" }, description: "Up to 4 renders under docs/ai/design-picks/; image i is labelled option i." }
       },
       required: [],
     },
@@ -484,7 +485,7 @@ const HANDLERS = {
         return errorText(`ERROR: no question with ticket ${args.ticket} — it was answered and swept, or the id is wrong. Ask again without a ticket.`);
       }
       const agent = args?.agent || args?.ai || detectClientName();
-      const ticket = existing || createApproval(PROJECT_ROOT, { agent, question: args?.question, context: args?.context, ttlMinutes: args?.ttl_minutes, options: args?.options });
+      const ticket = existing || createApproval(PROJECT_ROOT, { agent, question: args?.question, context: args?.context, ttlMinutes: args?.ttl_minutes, options: args?.options, images: args?.images });
 
       const deadline = Date.now() + ASK_WAIT_MS;
       let current = ticket;

@@ -187,6 +187,7 @@ function describeTicket(t) {
     const lines = [`${t.id}  [${t.tier}] ${t.agent}: ${t.question}${action}`];
     if (t.context) lines.push(...t.context.split('\n').map(l => `    ${l}`));
     if (t.options?.length) lines.push(`    options: ${t.options.join(' | ')}`);
+    if (t.images?.length) lines.push(`    images (open them before you pick): ${t.images.join(' | ')}`);
     lines.push(`    expires ${new Date(t.expiresAt).toISOString()}`);
     return lines.join('\n');
 }

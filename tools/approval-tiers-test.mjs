@@ -8,7 +8,7 @@ import path from 'path';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-approval-home-'));
 process.env.PLUTOS_HOME = home;
-const { createApproval, answerApproval, readApproval, runApprovedAction, approvalTier, tierAllows, approvalsDir, askSeal } = await import('../lib/approvals.mjs');
+const { createApproval, answerApproval, readApproval, runApprovedAction, approvalTier, tierAllows, approvalsDir, askSeal, designPickImagePath } = await import('../lib/approvals.mjs');
 const { applyApprovedSideEffects } = await import('../lib/approval-effects.mjs');
 
 let passed = 0, failed = 0;
@@ -78,6 +78,38 @@ try {
         settled.status === 'approved' && settled.answeredVia === 'local' && applyApprovedSideEffects(project, settled) === null && readApproval(project, real.id).status === 'approved');
     let ranReal = false;
     check('no action runs any more, even on an intact approved ticket', /Invalid approval action/.test(throws(() => runApprovedAction(project, real.id, cast, () => { ranReal = true; }))) && !ranReal);
+    // A/B design pick: a question may show renders, only from docs/ai/design-picks/ (owner, 2026-11-05).
+    const picks = path.join(project, 'docs', 'ai', 'design-picks', 'today');
+    fs.mkdirSync(picks, { recursive: true });
+    fs.writeFileSync(path.join(picks, 'A.png'), 'png'); fs.writeFileSync(path.join(picks, 'B.png'), 'png');
+    fs.writeFileSync(path.join(project, 'secret.png'), 'x');
+    const pick = createApproval(project, { agent: 'Claude', question: 'Which design for Today?', options: ['A', 'B', 'Neither'], images: ['docs/ai/design-picks/today/A.png', './docs/ai/design-picks/today/B.png'] });
+    check('a design pick keeps its images, normalised, and its seal holds', JSON.stringify(pick.images) === JSON.stringify(['docs/ai/design-picks/today/A.png', 'docs/ai/design-picks/today/B.png']) && readApproval(project, pick.id).images.length === 2);
+    const picked = (answerApproval(project, pick.id, { decision: 'approved', option: 'B', note: 'less text' }), readApproval(project, pick.id));
+    check('the owner picks B with a note', picked.status === 'approved' && picked.option === 'B' && picked.note === 'less text');
+    check('an image outside design-picks is refused', /under docs\/ai\/design-picks/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: ['secret.png'] }))));
+    check('a path that climbs out is refused', /under docs\/ai\/design-picks/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: ['docs/ai/design-picks/../../../secret.png'] }))));
+    check('a missing image is refused', /No image at/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: ['docs/ai/design-picks/today/C.png'] }))));
+    check('a non-image is refused', /under docs\/ai\/design-picks/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: ['docs/ai/design-picks/today/A.html'] }))));
+    check('at most four images', /At most 4 images/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: Array(5).fill('docs/ai/design-picks/today/A.png') }))));
+    if (process.platform !== 'win32') {
+        fs.symlinkSync(path.join(project, 'secret.png'), path.join(picks, 'link.png'));
+        check('a link from design-picks to another project file is refused', /No image at/.test(throws(() => designPickImagePath(project, 'docs/ai/design-picks/today/link.png'))));
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-outside-'));
+        fs.writeFileSync(path.join(outside, 'o.png'), 'x');
+        fs.symlinkSync(path.join(outside, 'o.png'), path.join(picks, 'out.png'));
+        check('a link to a file outside the project is refused', /No image at/.test(throws(() => designPickImagePath(project, 'docs/ai/design-picks/today/out.png'))));
+        const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-outdir-'));
+        fs.writeFileSync(path.join(outDir, 'x.png'), 'x');
+        fs.symlinkSync(outDir, path.join(project, 'docs', 'ai', 'design-picks', 'linked'), 'dir');
+        check('a linked folder inside design-picks that points outside is refused', /No image at/.test(throws(() => designPickImagePath(project, 'docs/ai/design-picks/linked/x.png'))));
+        fs.rmSync(outside, { recursive: true, force: true }); fs.rmSync(outDir, { recursive: true, force: true });
+    }
+    check('the same image written two ways is one image', /distinct/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: ['docs/ai/design-picks/today/A.png', 'docs/ai/design-picks//today/./A.png'] }))));
+    fs.writeFileSync(path.join(picks, 'big.png'), Buffer.alloc(8 * 1048576 + 1));
+    check('an image over 8 MB is refused', /over 8 MB/.test(throws(() => createApproval(project, { agent: 'C', question: 'q', images: ['docs/ai/design-picks/today/big.png'] }))));
+    const tampered = JSON.parse(fs.readFileSync(path.join(approvalsDir(project), `${pick.id}.json`), 'utf8'));
+    check('a ticket without images still seals as before', askSeal({ ...tampered, images: undefined }) !== tampered.askSeal && askSeal(tampered) === tampered.askSeal);
     check('the seal key lives in the data folder, not the project',
         fs.existsSync(path.join(home, 'approval-seal.key')) && !fs.readdirSync(path.join(project, '.plutos'), { recursive: true }).some(f => String(f).includes('seal.key')));
 } finally {

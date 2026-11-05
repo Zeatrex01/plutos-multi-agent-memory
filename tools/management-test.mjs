@@ -153,6 +153,15 @@ try {
     const { createApproval } = await import('../lib/approvals.mjs');
     const ticket = createApproval(a, { agent: 'Test seat', question: 'Synthetic owner decision?' });
     check('return summary includes pending owner decisions', (await api(summaryUrl)).data.pendingApprovals.some(q => q.id === ticket.id));
+    // A/B design pick: the card's images come only from docs/ai/design-picks/ of the open project.
+    fs.mkdirSync(path.join(a, 'docs', 'ai', 'design-picks', 'home'), { recursive: true });
+    fs.copyFileSync(path.join(a, 'docs', 'pixel.png'), path.join(a, 'docs', 'ai', 'design-picks', 'home', 'A.png'));
+    const imageUrl = rel => `${base}/api/approvals/image?project=${encodeURIComponent(a)}&path=${encodeURIComponent(rel)}`;
+    const pickImage = await fetch(imageUrl('docs/ai/design-picks/home/A.png'));
+    check('a design-pick image is served as an inert image', pickImage.status === 200 && pickImage.headers.get('content-type') === 'image/png' && pickImage.headers.get('x-content-type-options') === 'nosniff');
+    check('a file outside design-picks is not served', (await fetch(imageUrl('docs/pixel.png'))).status === 404);
+    check('a climbing path is not served', (await fetch(imageUrl('docs/ai/design-picks/../../pixel.png'))).status === 404);
+    check('a missing image is a 404', (await fetch(imageUrl('docs/ai/design-picks/home/B.png'))).status === 404);
     await post('/api/workspaces/switch', { path: b });
     await post('/api/project/install', {});
     fs.mkdirSync(path.join(b, '.plutos', 'approvals'), { recursive: true });
@@ -160,6 +169,7 @@ try {
     check('old project verification is rejected after dashboard switch', (await api('/api/board', { ...claim, expectedRevision: undefined })).status === 409);
     check('old project evidence is rejected after dashboard switch', (await fetch(base + evidenceUrl)).status === 409);
     check('scoped approval reads reject another selected project', (await api(`/api/approvals?project=${encodeURIComponent(a)}`)).status === 409);
+    check('a design-pick image of another project is not served', (await fetch(imageUrl('docs/ai/design-picks/home/A.png'))).status === 404);
     check('cloned ticket cannot be answered under another project', (await api('/api/approvals', { projectRoot: a, id: ticket.id, decision: 'approved' })).status === 409
         && JSON.parse(fs.readFileSync(path.join(b, '.plutos', 'approvals', ticket.id + '.json'), 'utf8')).status === 'pending');
 
