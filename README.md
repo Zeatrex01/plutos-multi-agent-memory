@@ -10,7 +10,7 @@ Codex, Cursor, Gemini CLI, Antigravity, Windsurf, Zed, VS Code Copilot…): the 
 through plain files in your repo and a local MCP server, and ask you before doing anything that
 matters.
 
-> Version `0.5.0-beta`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
+> Version `0.5.1`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
 > and nothing is sent to a cloud service. Open source under the Apache License 2.0; Node.js 22+, one runtime dependency.
 
 ![The shared board: Claude, Codex and Cursor on one project, each task with its owner and its check](docs/images/board.png)
@@ -98,19 +98,34 @@ they talk to it through MCP and files ("communication, not control").
 
 ## Quick start
 
-**Download and run (nothing to install):** open the latest
-[release](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases) and take the zip for
-your system:
+**Download and run (nothing to install):**
 
-| File | For | Then |
+| Download | For | Then |
 |---|---|---|
-| `PLUT_OS-<version>-windows-x64.zip` | Windows | unzip, double-click `PLUT_OS.exe` |
-| `PLUT_OS-<version>-linux-x64.zip` | Linux | unzip, run `./PLUT_OS` |
-| `PLUT_OS-<version>-lite.zip` | any system with Node.js 22+, macOS included | unzip, run `START_PLUT_OS.bat` or `./start-plutos.sh` |
+| [**PLUT_OS for Windows**](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases/latest/download/PLUT_OS-windows-x64.zip) | Windows 10/11 | unzip anywhere, double-click `PLUT_OS.exe` |
+| [**PLUT_OS for Linux**](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases/latest/download/PLUT_OS-linux-x64.zip) | Linux x64 | unzip, run `./PLUT_OS` |
+| [**PLUT_OS lite**](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases/latest/download/PLUT_OS-lite.zip) | macOS, or any system with Node.js 22+ | unzip, run `./start-plutos.sh` (or `START_PLUT_OS.bat`) |
 
-The dashboard opens at `http://localhost:3040`. The AI tools you connect still need Node.js 22+
-on the machine, because they start PLUT_OS's MCP server with it. Settings → Updates says when a
-newer release is out.
+The dashboard opens in your browser at `http://localhost:3040`. Every release is on the
+[releases page](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases); Settings → Updates
+says when a newer one is out.
+
+### First run, step by step
+
+1. **Open your project.** In the dashboard, **Projects → Add project** and pick the folder of a
+   project you already work on. Nothing is written into it yet.
+2. **Install the project kit.** On the project's card, press **Install the project kit**. It adds
+   the shared board, the rules file (`AGENTS.md`) and a pointer for each AI tool, and never
+   overwrites a file the project already has.
+3. **Connect your AI tools.** Still on the card, press **Set up** next to Claude Code, Codex,
+   Cursor or Gemini CLI. It writes the small config file that tool reads, and shows you which file
+   first. Restart the tool afterwards. (The AI tools start PLUT_OS with Node.js, so they need
+   Node.js 22+ installed; most of them do already.)
+4. **Work as usual.** Open the AI tool in the project folder and give it a task. It reads the
+   brief by itself at the start, claims the task on the board and leaves a record at the end.
+5. **Watch and answer.** **Home** shows what needs you; **Board** shows who works on what; a
+   question an AI asks you pops up in the dashboard with its options. The next AI you open,
+   whichever tool it is, starts from the record the last one left.
 
 **Windows, from source** (Node.js 22+ installed):
 

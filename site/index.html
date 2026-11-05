@@ -227,7 +227,7 @@ footer .brand { font-size: 13px; }
         <h1>Every AI on your repo,<br><span class="grad">orbiting one memory.</span></h1>
         <p class="lead">Claude Code, Codex, Cursor and Gemini CLI each start every session blind. PLUT_OS is the core they share: what was decided, what was checked, who works on what, and one queue for the questions only you should answer.</p>
         <div class="chips">
-          <span class="chip" id="version">v0.5.0-beta</span>
+          <span class="chip" id="version">v0.5.1</span>
           <span class="chip">Apache-2.0</span>
           <span class="chip">Runs on 127.0.0.1 only</span>
           <span class="chip">No account · no telemetry</span>
@@ -440,11 +440,20 @@ b37cf4631f1103…  claim   <span class="status verified">verified</span>
       </div>
       <div class="downloads">
         <div class="dl reveal" data-os="windows"><span class="for">Windows</span><h3>PLUT_OS.exe</h3><span class="then">Unzip, double-click <code>PLUT_OS.exe</code>.</span><span class="size" data-size></span>
-          <a class="btn core" data-asset="windows-x64" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Download for Windows</a></div>
+          <a class="btn core" data-asset="windows-x64" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases/latest/download/PLUT_OS-windows-x64.zip">Download for Windows</a></div>
         <div class="dl reveal" data-os="linux"><span class="for">Linux</span><h3>PLUT_OS</h3><span class="then">Unzip, run <code>./PLUT_OS</code>.</span><span class="size" data-size></span>
-          <a class="btn core" data-asset="linux-x64" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Download for Linux</a></div>
+          <a class="btn core" data-asset="linux-x64" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases/latest/download/PLUT_OS-linux-x64.zip">Download for Linux</a></div>
         <div class="dl reveal" data-os="mac"><span class="for">macOS · any system with Node.js 22+</span><h3>Lite</h3><span class="then">Unzip, run <code>./start-plutos.sh</code> or <code>START_PLUT_OS.bat</code>.</span><span class="size" data-size></span>
-          <a class="btn core" data-asset="lite" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases">Download lite</a></div>
+          <a class="btn core" data-asset="lite" href="https://github.com/Zeatrex01/plutos-multi-agent-memory/releases/latest/download/PLUT_OS-lite.zip">Download lite</a></div>
+      </div>
+      <h3 style="margin-top:44px">First run, step by step</h3>
+      <div class="features" style="margin-top:18px">
+        <div class="feat"><div class="ic">01</div><h3>Open your project</h3><p>The dashboard opens in your browser. <b>Projects → Add project</b> and pick a folder you already work in. Nothing is written yet.</p></div>
+        <div class="feat"><div class="ic">02</div><h3>Install the kit</h3><p>On the project's card, <b>Install the project kit</b>: the shared board, the rules file and a pointer per AI tool. Existing files are never overwritten.</p></div>
+        <div class="feat"><div class="ic">03</div><h3>Connect your AIs</h3><p>Press <b>Set up</b> next to Claude Code, Codex, Cursor or Gemini CLI. It writes the config file that tool reads, then restart the tool.</p></div>
+        <div class="feat"><div class="ic">04</div><h3>Work as usual</h3><p>Open the AI in the project folder and give it a task. It reads the brief on its own, claims the task and leaves a record at the end.</p></div>
+        <div class="feat"><div class="ic">05</div><h3>Answer what needs you</h3><p><b>Home</b> lists what waits for you, <b>Board</b> shows who works on what, and a question an AI asks pops up with its options.</p></div>
+        <div class="feat"><div class="ic">06</div><h3>Switch tools freely</h3><p>The next AI you open, whichever tool it is, starts from the record the last one left. Nothing to explain twice.</p></div>
       </div>
       <p class="note">The AI tools you connect start PLUT_OS's MCP server with Node.js, so they still need Node.js 22+ on the machine. Settings → Updates in the dashboard says when a newer release is out.</p>
       <h3 style="margin-top:36px">Or from source</h3>

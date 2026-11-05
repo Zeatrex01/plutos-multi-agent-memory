@@ -4,6 +4,8 @@
 #   windows-x64  PLUT_OS.exe without a console window (unzip, double-click)
 #   linux-x64    the PLUT_OS binary
 #   lite         one bundled file for any machine that already has Node.js 22+ (macOS included)
+# The file names carry no version, so releases/latest/download/PLUT_OS-windows-x64.zip is always
+# the newest full release (a pre-release is not "latest").
 # Run it by hand (Actions → Release builds → Run workflow) to build an existing release again.
 name: Release builds
 
@@ -48,14 +50,14 @@ jobs:
         shell: pwsh
         run: |
           Rename-Item dist PLUT_OS
-          Compress-Archive -Path PLUT_OS -DestinationPath "PLUT_OS-$env:TAG-${{ matrix.package }}.zip"
+          Compress-Archive -Path PLUT_OS -DestinationPath "PLUT_OS-${{ matrix.package }}.zip"
       - name: Zip
         if: runner.os != 'Windows'
         run: |
           mv dist PLUT_OS
-          zip -qr "PLUT_OS-$TAG-${{ matrix.package }}.zip" PLUT_OS
+          zip -qr "PLUT_OS-${{ matrix.package }}.zip" PLUT_OS
       - name: Attach to the release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" "PLUT_OS-$TAG-${{ matrix.package }}.zip" --clobber --repo "$GITHUB_REPOSITORY"
+        run: gh release upload "$TAG" "PLUT_OS-${{ matrix.package }}.zip" --clobber --repo "$GITHUB_REPOSITORY"
