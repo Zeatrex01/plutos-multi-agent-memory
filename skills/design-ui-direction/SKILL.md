@@ -11,7 +11,8 @@ Evidence labels: **[M]** measured, **[P]** documented practice, **[O]** opinion.
 **Apps and games differ here** (owner's blind picks, 2026-11-05: the skill's look won 2 of 2 game screens and 1 of 8
 app screens; every rule that shaped an app's look missed the owner's eye somewhere).
 - **App:** this skill does not shape the look. The look comes from the owner's picks in DESIGN.md; until there are
-  some, design as you judge best for the users and **propose an A/B pick** (step 6) on the first main screen. Run only
+  some, **propose the design kickoff** (step 6): drafts of the pages the scope needs, picked by the owner, then one
+  common design. Run only
   the failure checks of step 4 (they find defects, they never change the style). Skip steps 2, 3 and 5.
 - **Game:** follow every step, plus the game package's checks.
 
@@ -63,11 +64,12 @@ smallest fix that keeps the look.
   [references/slop-markers.md](references/slop-markers.md) as questions, not verdicts.
 - Fix only when asked: one typed goal per round, at most 3 rounds, re-render each round, keep the best round [M].
 
-## 6. A/B design pick (on request, and proposed on an app's first main screen)
-When the owner asks, or when you propose it for a screen that sets the project's look, follow
-[references/design-pick.md](references/design-pick.md): two real alternatives rendered, shown blind in a
-`plutos_ask` card with images, the pick and the owner's note recorded under "Owner picks" in DESIGN.md. Picks outrank
-this skill's defaults on look, never on accessibility.
+## 6. Design kickoff and A/B picks
+At the start of a project with a UI (no "Owner picks" yet), propose the kickoff in
+[references/design-pick.md](references/design-pick.md): A and B drafts of the 3-6 page types the scope needs, shown
+blind as one set of `plutos_ask` cards with images, the picks recorded under "Owner picks", one common design derived
+from them and confirmed by the owner. Afterwards a new pick only on request, for a new kind of page, or when the owner
+says a page is wrong. Picks outrank this skill's defaults on look, never on accessibility.
 
 ## 7. Hand back
 Update DESIGN.md (tokens, components, "Not in this project", Decisions) and report what was measured (word counts,

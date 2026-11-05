@@ -101,6 +101,8 @@ try {
         const picked = project('picked', { 'a.html': '<p></p>', 'docs/ai/DESIGN.md': PAGE + '\n## Owner picks\n- 2026-11-05 · Today · A dense list / B one card · picked B · "less text" · one framed card\n' });
         assert.equal(readDesign(picked).picks, 1);
         assert.match(designBriefLines(picked).join('\n'), /1 owner pick\(s\), follow them first/);
+        assert.doesNotMatch(designBriefLines(picked).join('\n'), /design kickoff/);
+        assert.match(designBriefLines(web).join('\n'), /No owner picks yet: for an app, propose the design kickoff/);
     });
     check('a DESIGN.md without UI files yet still gets its line', () => {
         const early = project('early', { 'README.md': '', 'docs/ai/DESIGN.md': PAGE });
