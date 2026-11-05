@@ -83,6 +83,7 @@ When several AIs work on one codebase, the same things go wrong every day:
 | Approval prompts scattered across tools | `plutos_ask`: one approval queue in the dashboard. Tickets are sealed so an agent cannot approve itself by editing a file, and `plutos approve` needs an interactive terminal, so an agent with a shell cannot run it either |
 | Each agent grepping its way into a task | `plutos_context_for_task`: give it the task in a sentence and get the files to open first, ranked from the code graph, each with the reason it is listed and a confidence |
 | Skills scattered per AI tool | A Skills page: the skill folders every connected tool reads, and packs switched on per project into `.claude/skills` and `.agents/skills` at once |
+| Each AI copying the first quick design, AI defaults included | A project with a UI keeps its own design language in `docs/ai/DESIGN.md`: the brief asks the first AI to derive it from the project, later AIs follow it, and the `design-ui-direction` skill adds 15 start-of-project checks and a scored critique (a trial; it won 5 of 5 blind with/without comparisons). Projects without a UI see nothing new |
 | Every project with different habits | The working agreement in every session brief carries the discipline (reuse before writing, surgical changes, evidence before claims) |
 
 ## Who it is for

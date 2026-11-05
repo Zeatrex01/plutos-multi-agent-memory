@@ -28,6 +28,7 @@ export const PRIVATE = [
     'docs/RELEASE-NOTES-next.md', // the owner's own to-do list and the records it cites
     'SCOPE.md', // this repository's own queue and appetite, not the product's
     'ARCHITECTURE.md', 'docs/architecture/', 'tools/architecture-docs-test.mjs', // the internals reference a rebuild starts from (not published)
+    'docs/superpowers/', // design specs and plans of this repository's own jobs
     'tools/public-repo/', // the seeds of the target's own files, copied only where the target has none
     'tools/memory-probes.json', 'tools/memory-probes-heldout.json', 'tools/memory-probes-third.json', // probes keyed to this repository's record ids
 ];
