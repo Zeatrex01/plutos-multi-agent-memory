@@ -1,6 +1,6 @@
 {
   "name": "plut-os",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Portable local PC app for shared AI project memory and coordination (dashboard + Coordinator MCP)",
   "main": "index.mjs",
   "bin": {

@@ -48,7 +48,7 @@
         </button>
         <span class="sys-mark"><b>▮</b> PLUT_OS</span>
         <!-- Must match package.json "version" — tools/smoke-test.mjs asserts it, so it cannot drift. -->
-        <span class="sys-item dim" style="color:var(--text-muted);">v0.5.1</span>
+        <span class="sys-item dim" style="color:var(--text-muted);">v0.5.2</span>
         <span class="sys-spacer"></span>
         <span class="sys-item"><span style="color:var(--text-muted);" data-i18n="sys_project">project</span> <span id="sys-project">—</span></span>
         <!-- Whether an AI tool can reach this project, in words, and one click to where it is
@@ -133,7 +133,7 @@
         (async () => {
             // Version must match package.json — tools/smoke-test.mjs asserts both this and the
             // system bar, so the boot screen cannot drift the way it did at "v1.0".
-            line('<span class="dim">plutos kernel</span> <span class="ok">v0.5.1</span>');
+            line('<span class="dim">plutos kernel</span> <span class="ok">v0.5.2</span>');
             await sleep(DWELL);
             await probe('mounting workspaces', '/api/workspaces', d => (d.workspaces || []).length + ' registered');
             await probe('mcp heartbeat', '/api/mcp/status', d => d.active ? 'online' : 'offline');

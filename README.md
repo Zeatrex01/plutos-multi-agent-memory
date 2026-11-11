@@ -10,7 +10,7 @@ Codex, Cursor, Gemini CLI, Antigravity, Windsurf, Zed, VS Code Copilot…): the 
 through plain files in your repo and a local MCP server, and ask you before doing anything that
 matters.
 
-> Version `0.5.1`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
+> Version `0.5.2`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
 > and nothing is sent to a cloud service. Open source under the Apache License 2.0; Node.js 22+, one runtime dependency.
 
 ![The shared board: Claude, Codex and Cursor on one project, each task with its owner and its check](docs/images/board.png)

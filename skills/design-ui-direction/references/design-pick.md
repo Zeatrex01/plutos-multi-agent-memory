@@ -7,6 +7,11 @@ kapsamına göre gereken sayfaların örnek taslaklarını bana test olarak suna
 
 ## The kickoff (once, at the start of a project with a UI)
 Run it when DESIGN.md has no "Owner picks" yet, after asking the owner once through `plutos_ask` whether to run it now.
+0. **The essence of what exists** (a project that already has screens). Render today's screens, read their token
+   files, and write a short "essence" note into DESIGN.md: what the product is, the tokens and patterns in use, what to
+   keep (what works and is the project's own), what to change, what to drop (slop markers, inconsistencies between
+   screens). The drafts below build on this note, so the kickoff proposes a new design grown from the project's own,
+   not one from nowhere. Show today's screens next to the drafts when it helps the owner compare.
 1. **Pages from the scope.** Read `SCOPE.md`, the project map and the README, and list the 3-6 page types the project
    needs (for example home, list, detail, form, settings; phone and desktop if both are targets). Name them in the
    question so the owner sees what is covered.
