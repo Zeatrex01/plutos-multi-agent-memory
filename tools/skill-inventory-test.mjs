@@ -431,11 +431,12 @@ try {
         fs.rmSync(bulk, { recursive: true });
         // A named pipe cannot be backed up: refused, nothing removed.
         const fifo = path.join(target, 'pipe');
-        if (spawnSync('mkfifo', [fifo]).status === 0) {
+        // Git for Windows ships an mkfifo that leaves a plain file, not a pipe: test only a real one.
+        if (spawnSync('mkfifo', [fifo]).status === 0 && fs.lstatSync(fifo).isFIFO()) {
             assert.throws(() => exportSkill('project-scissors', dest, { appRoot, home: hub, force: true, forceLocal: true }), /cannot be backed up whole \(pipe is not a file, a folder or a link\)/);
             assert.ok(fs.lstatSync(fifo).isFIFO());
-            fs.unlinkSync(fifo);
         }
+        fs.rmSync(fifo, { force: true });
         exportSkill('project-scissors', dest, { appRoot, home: hub, force: true });
     });
 

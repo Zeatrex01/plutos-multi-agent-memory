@@ -76,7 +76,7 @@ try {
         const text = designBriefLines(web).join('\n');
         assert.match(text, /No `docs\/ai\/DESIGN\.md`: before the first UI change/);
         assert.ok(text.includes('DESIGN-template.md'));
-        assert.ok(text.includes('design-ui-direction/SKILL.md'));
+        assert.ok(text.replace(/\\/g, '/').includes('design-ui-direction/SKILL.md'));
     });
     fs.mkdirSync(path.join(web, 'docs', 'ai'), { recursive: true });
     fs.writeFileSync(path.join(web, 'docs', 'ai', 'DESIGN.md'), PAGE);

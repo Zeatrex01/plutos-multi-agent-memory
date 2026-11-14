@@ -951,11 +951,14 @@ if (process.argv.includes('--brief')) {
   // The SessionStart event on stdin says why the hook fired (startup, resume, clear, compact): only
   // a startup is a new session in the usage log. Read without blocking and given 200 ms at most,
   // after the brief is out, so a pipe that never closes delays nothing the AI sees.
+  // The 200 ms start once the brief is out: building it is synchronous, and on Windows a timer armed
+  // before it could fire before the queued stdin data is read.
+  let armHookTimeout = () => {};
   const hookEvent = new Promise(resolve => {
     if (process.stdin.isTTY) return resolve({});
     let buf = '';
     const done = () => { try { resolve(JSON.parse(buf) || {}); } catch (e) { resolve({}); } };
-    setTimeout(done, 200).unref();
+    armHookTimeout = () => setTimeout(done, 200).unref();
     try {
       process.stdin.setEncoding('utf8');
       process.stdin.on('data', d => { buf += d; });
@@ -977,6 +980,7 @@ if (process.argv.includes('--brief')) {
   // source, "brief:<source>" otherwise. It runs after the text is written and cannot touch it.
   process.stdout.write(out, async () => {
     try {
+      armHookTimeout();
       const ev = await hookEvent;
       const source = typeof ev?.source === 'string' ? ev.source.trim().toLowerCase().replace(/[^a-z_-]/g, '').slice(0, 20) : '';
       const name = !source || source === 'startup' ? 'brief' : `brief:${source}`;
