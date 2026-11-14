@@ -1,10 +1,10 @@
 ---
 name: project-scissors
-description: Use at the start of any tool or game project, before adding systems or features, when the user asks to add or extend something, or when a project feels bloated, drifting or unfinished. Plans architecture first, guards scope and structure, cuts bloat via SCOPE.md.
+description: "Use when a project has a SCOPE.md, at the start of a tool or game project when the owner asks to plan its scope, or when the owner asks to cut a bloated, drifting or never-ending project. Plans the architecture first (SCOPE.md and ADRs), guards scope and structure while SCOPE.md exists, and cuts bloat. Not for ordinary feature requests in a project without SCOPE.md; inside a game jam use the jam package's jam-cut."
 ---
 # Project Scissors
 
-Three modes, in order. PLAN when SCOPE.md is missing or has no approved Architecture. GUARD for every task after that. CUT when the appetite date has passed, the project feels bloated or never ends, or the user asks to cut.
+Three modes. PLAN when the owner asks to plan a project's scope and SCOPE.md is missing or has no approved Architecture. GUARD only while the project has a SCOPE.md: without one, GUARD does not run and this skill never refuses, parks or blocks a request. CUT when the appetite date has passed, the project feels bloated or never ends, or the owner asks to cut.
 
 Templates and background: `references/scope-template.md`, `references/adr-template.md`, `references/standing-rules.md`, `references/hook-example.md`, `references/eval-protocol.md`, `references/evidence-map.md`. In the Claude app, read `references/CLAUDE_HOST.md` for where files live. Inside PLUT_OS: the session brief shows the project's SCOPE.md line, and a project with an `IDEAS.md` keeps its "Later" list there.
 
@@ -19,7 +19,8 @@ Templates and background: `references/scope-template.md`, `references/adr-templa
 3. Write SCOPE.md from the template. Record each key decision as an ADR in docs/adr/. Get explicit OK.
 4. Build the walking skeleton first: the thinnest version that connects every module end to end, with no features. Verify it runs. Only then build the first slice on top.
 
-## GUARD (every task)
+## GUARD (only when SCOPE.md exists)
+No SCOPE.md in the project: skip GUARD entirely and do the requested work as asked.
 1. Read SCOPE.md and docs/adr/ first.
 2. Classify each request: IN-SCOPE / OUT-OF-SCOPE / NEW IDEA. For the last two: append to "Later", ask "swap with an in-scope item, or park it?", and do not implement.
 3. Never edit Architecture or Do not touch items without approval. An approved structural change gets a new ADR.

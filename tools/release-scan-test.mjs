@@ -43,6 +43,17 @@ try {
     check('code and file names that only look like mail are not personal, nor are generic account names', () => {
         assert.ok(!found.some(f => f.kind === 'personal' && (f.file === 'g.py' || f.file === 'h.md')), JSON.stringify(found.filter(f => f.file === 'g.py' || f.file === 'h.md')));
     });
+    check('an address on a line that sets a placeholder is a form sample; the same local part elsewhere is personal', () => {
+        const dealer = ['bayi', 'firma.com'].join('@');
+        write('form.html', `<input placeholder="${dealer}">\n{ "placeholder": "${dealer}" }\nplaceholder: '${dealer}',\nwrite to ${dealer}\n<input value="${dealer}">\n`);
+        assert.deepEqual(scanRelease(repo, { files: ['form.html'], terms: [] }).map(f => `${f.kind} ${f.line}`), ['personal 4', 'personal 5']);
+    });
+    check('a placeholder exempts only its own value: a real address on the same minified line is personal', () => {
+        const sample = ['x', 'firma.com'].join('@');
+        const real = ['ali.veli', 'gmail.com'].join('@');
+        write('a.min.html', `<input placeholder="${sample}"><a href="mailto:${real}">\n`);
+        assert.deepEqual(scanRelease(repo, { files: ['a.min.html'], terms: [] }).map(f => `${f.kind} ${f.line}`), ['personal 1']);
+    });
     check('a key-shaped string is a secret', () => assert.deepEqual(at('secret'), ['f.txt:1']));
     check('a term from the terms file is found, whatever its case', () => assert.deepEqual(at('terms'), ['e.md:2']));
     check('a tracked source map and a sourceMappingURL comment are both reported', () => {

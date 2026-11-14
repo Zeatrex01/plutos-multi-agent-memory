@@ -26,10 +26,11 @@ function repairLauncher() {
     repairThenRefresh();
 }
 
-// textContent everywhere below: these strings carry filesystem paths.
-function el(tag, style, text) {
+// textContent everywhere below: these strings carry filesystem paths. Looks come from classes
+// in ui/styles.css, never inline styles.
+function el(tag, cls, text) {
     const n = document.createElement(tag);
-    if (style) n.style.cssText = style;
+    if (cls) n.className = cls;
     if (text != null) n.textContent = text;
     return n;
 }
@@ -56,12 +57,12 @@ function para(text, kind) {
 
 function automationCard(status) {
     const card = el('div'); card.className = 'panel hub-auto';
-    const head = el('div', 'display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;');
-    head.append(el('strong', 'color:var(--text-title);', t('context_auto_title')),
+    const head = el('div', 'hub-auto-head');
+    head.append(el('strong', null, t('context_auto_title')),
         pill(status?.enabled ? t('context_auto_enabled') : t('context_auto_disabled'), status?.enabled ? 'is-done' : ''));
     if (status?.enabled || status?.available) {
         const toggle = button(status?.enabled ? t('context_auto_disable') : t('context_auto_enable'), !status?.enabled);
-        toggle.style.marginLeft = 'auto';
+        toggle.classList.add('hub-auto-toggle');
         toggle.onclick = () => toggleAutomation(!status.enabled, toggle);
         head.append(toggle);
     }
@@ -151,7 +152,7 @@ function row(client, projectRoot) {
     }
     if (client.note) more.append(para(client.note));
     if (client.warning) more.append(para(client.warning, 'is-warn'));
-    const copies = el('div', 'display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.45rem;');
+    const copies = el('div', 'hub-tool-copies');
     copies.append(copyButton(client.format === 'toml' ? t('connect_copy_toml') : t('connect_copy_json'), client.snippet));
     if (client.command) copies.append(copyButton(t('connect_copy_cmd'), client.command));
     more.append(copies);
@@ -180,8 +181,12 @@ async function wire(clientId, button, projectRoot) {
         });
         const data = await res.json();
         if (data.success) {
-            // A config git already tracks now holds this machine's paths: the server says so.
-            showToast(t('connect_written') + ' ' + data.path + (data.warning ? '. ' + data.warning : ''), data.warning ? 'warning' : false);
+            // A config git already tracks now holds this machine's paths: the server says so. Wiring
+            // Claude Code also switches the session hooks on, and says how to switch them off.
+            const hooksError = data.hooks && data.hooks.error ? data.hooks.error : '';
+            const warn = data.warning || hooksError;
+            showToast(t('connect_written') + ' ' + data.path + (data.warning ? '. ' + data.warning : '')
+                + (data.hooksNotice ? ' ' + data.hooksNotice : '') + (hooksError ? ' ' + t('connect_hooks_failed') + ' ' + hooksError : ''), warn ? 'warning' : false);
             await fetchConnect();
         } else {
             showToast(data.message, true);
@@ -232,7 +237,7 @@ function extraTools(recommended) {
     if (!tools.length) return null;
     const li = el('li'); li.className = 'hub-step';
     const mark = el('span', null, '+'); mark.className = 'hub-step-num';
-    const main = el('div', 'min-width:0;');
+    const main = el('div', 'hub-step-main');
     const head = el('div'); head.className = 'hub-step-head';
     head.append(el('strong', null, t('connect_extra_tools')));
     const list = el('div'); list.className = 'hub-tools';
@@ -250,7 +255,7 @@ function extraTools(recommended) {
             link.href = tool.link; link.target = '_blank'; link.rel = 'noopener noreferrer';
             actions.append(link);
         }
-        card.append(name, actions, el('p', 'grid-column:1 / -1; margin:0; color:var(--text-muted); font-size:.78rem; line-height:1.5;', about(tool)));
+        card.append(name, actions, el('p', 'hub-tool-about', about(tool)));
         list.append(card);
     }
     main.append(head, para(t('mcp_via_board_intro'), 'hub-step-note'), list);
@@ -265,7 +270,7 @@ const MAIN_TOOLS = ['claude-code', 'codex', 'gemini-cli', 'cursor'];
 function step(num, done, locked, title, status, action, ...body) {
     const li = el('li'); li.className = 'hub-step' + (done ? ' is-done' : '') + (locked ? ' is-locked' : '');
     const mark = el('span', null, done ? '✓' : String(num)); mark.className = 'hub-step-num';
-    const main = el('div', 'min-width:0;');
+    const main = el('div', 'hub-step-main');
     const head = el('div'); head.className = 'hub-step-head';
     head.append(el('strong', null, title));
     if (status) head.append(status);

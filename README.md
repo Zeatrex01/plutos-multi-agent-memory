@@ -10,7 +10,7 @@ Codex, Cursor, Gemini CLI, Antigravity, Windsurf, Zed, VS Code Copilot…): the 
 through plain files in your repo and a local MCP server, and ask you before doing anything that
 matters.
 
-> Version `0.5.2`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
+> Version `0.5.3`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
 > and nothing is sent to a cloud service. Open source under the Apache License 2.0; Node.js 22+, one runtime dependency.
 
 ![The shared board: Claude, Codex and Cursor on one project, each task with its owner and its check](docs/images/board.png)
@@ -34,14 +34,13 @@ e9082043308751982b98e056  claim     verified  Sync runs every 30 seconds
 b37cf4631f110395142ea93d  claim     verified  Auth tokens live 15 minutes
 ```
 
-**Codex** took the review Claude assigned to it and reached a decision it should not make alone. It asked; the question waits in the dashboard with the options it offered:
+**Codex** took the review Claude assigned to it and reached a decision it should not make alone. It asked; the question waits on the dashboard's Home page with the options it offered:
 
 <img src="docs/images/approval.png" alt="An approval card: Codex asks whether to shorten the refresh token lifetime, with three options and Reject" width="420">
 
-**Cursor** finished its own task with a passed check and the file that shows it. The Report page
-puts the three sessions, what reached git and what is still in flight on one screen:
-
-![The Report page: recorded sessions, commits and the work in flight](docs/images/report.png)
+**Cursor** finished its own task with a passed check and the file that shows it. `plutos report`
+puts the three sessions, what reached git and what is still in flight in one report (the dashboard's
+Report page was removed on 2026-11-14; Home keeps the open board count and the last session's next step).
 
 **Then the code changed.** Someone set the sync interval to 60 seconds. The next session's brief
 no longer hands the old fact over as true:
@@ -82,7 +81,7 @@ When several AIs work on one codebase, the same things go wrong every day:
 | An AI saying "done" with no test run | The claim check sends a "done" back when the tests did not run or a test was edited in the same fix; `plutos check` fails on records that cite missing files and on a tool, route or approval-rule change that no reviewer looked at |
 | Approval prompts scattered across tools | `plutos_ask`: one approval queue in the dashboard. Tickets are sealed so an agent cannot approve itself by editing a file, and `plutos approve` needs an interactive terminal, so an agent with a shell cannot run it either |
 | Each agent grepping its way into a task | `plutos_context_for_task`: give it the task in a sentence and get the files to open first, ranked from the code graph, each with the reason it is listed and a confidence |
-| Skills scattered per AI tool | A Skills page: the skill folders every connected tool reads, and packs switched on per project into `.claude/skills` and `.agents/skills` at once |
+| Skills scattered per AI tool | `plutos skills` and `plutos pack`: the skill folders every connected tool reads, and packs switched on per project into `.claude/skills` and `.agents/skills` at once |
 | Each AI copying the first quick design, AI defaults included | A project with a UI keeps its own design language in `docs/ai/DESIGN.md`: the brief asks the first AI to derive it from the project, later AIs follow it, and the `design-ui-direction` skill adds 15 start-of-project checks and a scored critique (a trial; it won 5 of 5 blind with/without comparisons). Projects without a UI see nothing new |
 | Every project with different habits | The working agreement in every session brief carries the discipline (reuse before writing, surgical changes, evidence before claims) |
 
@@ -185,11 +184,11 @@ whether a newer release exists, with a Download link.
    learned claims with evidence, and where work stopped are carried to the next session, whichever
    AI it is.
 3. **Coordinate.** Tasks are claimed, updated and finished on the shared board. Questions that
-   need you go to the approval queue. The Board and Home pages show who works on what.
+   need you wait on the dashboard's Home page. The Board page shows who works on what.
 
-Also there: a blind **Shared Table** council (several AIs answer independently, then you decide),
-a source-backed research studio, and the Skills page, where a pack of Agent Skills is switched on per
-project. PLUT_OS ships no field's skills of its own: a domain lives in its own pack. Off until you
+The dashboard has four pages: Home, Board, Projects and Settings. Also there, outside it: a blind
+council (`tools/council.mjs`: several AIs answer independently, then you decide), a source-backed
+research studio for your AI, and skill packs switched on per project with `plutos pack`. PLUT_OS ships no field's skills of its own: a domain lives in its own pack. Off until you
 turn it on: a code graph (`graphify`).
 
 ## Evidence
@@ -217,7 +216,7 @@ records already counts as common.
   is no password, session or device list, and nothing to turn the LAN on.
 - A request that arrives through a proxy or tunnel is refused even on loopback: a forwarding
   header makes it remote.
-- PLUT_OS starts AI turns in two places, and neither asks for a ticket: the Shared Table council,
+- PLUT_OS starts AI turns in two places, and neither asks for a ticket: the council,
   whose moderator starts a Codex or Antigravity turn each time it asks a department through
   `tools/council.mjs`, and automatic shared-context capture, which runs `claude -p` with Haiku
   after a compaction or session end once you switch it on for a project.
@@ -240,7 +239,9 @@ records already counts as common.
 | Project list, logs, the approval seal key | Windows `%LOCALAPPDATA%\PLUT_OS`; macOS `~/Library/Application Support/PLUT_OS`; Linux `~/.local/share/plut-os` (override with `PLUTOS_HOME`) |
 | Boards, decisions, session history, checked facts | The project's `docs/handoff/` |
 | Code index | The project's `docs/ai/` |
-| Per-machine binding | The project's gitignored `.plutos/` |
+| Shared project state: the open drawers, the switched-on packs | The project's `.plutos/drawers.json` and `.plutos/packs.json`, tracked in git (`plutos audit` reports one git does not hold) |
+| Per-machine binding and caches | The rest of the project's `.plutos/` (`local.json`, `plutos.config.json`, `memory.db`), gitignored |
+| Usage log: which AI called which PLUT_OS tool or hook, when, ok or failed, how long (never arguments or content) | The project's `.plutos/usage.jsonl` (rotated to `usage.1.jsonl` at 2 MB), gitignored; read with `plutos usage` |
 
 ## Development
 

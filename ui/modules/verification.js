@@ -5,7 +5,6 @@ import { escHtml } from '../esc.js';
 import { showToast } from './toast.js';
 
 const STATES = ['unverified', 'passed', 'failed'];
-const COLORS = { unverified: 'var(--text-muted)', passed: 'var(--status-done)', failed: 'var(--status-error)' };
 const stateOf = entry => STATES.includes(entry.verification) && (entry.verification !== 'passed' || entry.evidence)
     ? entry.verification : 'unverified';
 
@@ -20,8 +19,9 @@ export function verificationBadge(entry, board, projectRoot) {
     } else if (entry.evidence && projectRoot) {
         href = '/api/board/evidence?' + new URLSearchParams({ project: projectRoot, board, agent: entry.agent, title: entry.title });
     }
-    return `<span style="font-size:0.68rem;color:${COLORS[state]};">${escHtml(t('verification_label'))}: ${escHtml(t('verification_' + state))}</span>
-        ${href ? `<a href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="font-size:0.68rem;">${escHtml(t('verification_open'))}</a>` : ''}`;
+    // The state is a fixed word from STATES, so it is safe as a class (verify-unverified|passed|failed).
+    return `<span class="verify-badge verify-${state}">${escHtml(t('verification_label'))}: ${escHtml(t('verification_' + state))}</span>
+        ${href ? `<a class="verify-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escHtml(t('verification_open'))}</a>` : ''}`;
 }
 
 export function verificationForm(entry, board, projectRoot) {
@@ -29,7 +29,7 @@ export function verificationForm(entry, board, projectRoot) {
     const id = 'verification-' + encodeURIComponent([board, entry.agent, entry.title].join('::'));
     return `<form onsubmit="recordTaskVerification(event, this)" onclick="event.stopPropagation()"
         data-project-root="${escHtml(projectRoot)}" data-board="${escHtml(board)}" data-agent="${escHtml(entry.agent)}"
-        data-status="${escHtml(entry.status)}" data-title="${escHtml(entry.title)}" data-revision="${escHtml(entry.revision || '')}" style="margin-top:0.8rem;display:grid;gap:0.4rem;">
+        data-status="${escHtml(entry.status)}" data-title="${escHtml(entry.title)}" data-revision="${escHtml(entry.revision || '')}" class="verify-form">
         <label class="field-label" for="${escHtml(id)}">${escHtml(t('verification_label'))}</label>
         <select id="${escHtml(id)}" name="verification" class="field-select field-sm">
             ${STATES.map(state => `<option value="${state}"${state === stateOf(entry) ? ' selected' : ''}>${escHtml(t('verification_' + state))}</option>`).join('')}
@@ -38,7 +38,7 @@ export function verificationForm(entry, board, projectRoot) {
         <input id="${escHtml(id + '-evidence')}" name="evidence" value="${escHtml(entry.evidence || '')}" maxlength="2000"
             placeholder="${escHtml(t('verification_evidence_hint'))}" class="field-input field-sm">
         <small class="field-hint">${escHtml(t('verification_recorded_note'))}</small>
-        <button type="submit" class="btn-primary btn-sm" style="justify-self:start;">${escHtml(t('verification_record'))}</button>
+        <button type="submit" class="btn-primary btn-sm">${escHtml(t('verification_record'))}</button>
     </form>`;
 }
 

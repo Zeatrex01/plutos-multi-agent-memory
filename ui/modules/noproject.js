@@ -22,7 +22,7 @@ export async function checkActiveProject(hub) {
         hub ??= await fetch('/api/workspaces').then(r => r.json());
         noProject = !hub.activeWorkspace;
     } catch (e) {
-        noProject = false;   // offline is the activity strip's story to tell, not this one
+        noProject = false;   // offline is the system bar's story to tell, not this one
     }
     return !noProject;
 }

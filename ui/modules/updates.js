@@ -1,4 +1,4 @@
-// Settings → Updates and Settings → Install as an app.
+// Settings → Updates, and the service worker registration.
 //
 // Updates: opening Settings shows the last check the server remembers (GET /api/update, no
 // network). Only "Check for updates" checks (GET /api/update?check=1): a git copy against its
@@ -6,18 +6,17 @@
 // is behind and POSTs the check's token; the result says to restart PLUT_OS, and the page is never
 // reloaded for the owner.
 //
-// The app: the service worker (ui/sw.js) is registered on localhost only, in the top window (the
-// browser client frames this page), and a failure is silent. Chrome and Edge offer their install
-// prompt through `beforeinstallprompt`, kept here for the Install button; other browsers never fire
-// it, so the card says where their own Install option is.
+// The service worker (ui/sw.js) is registered on localhost only, in the top window (the browser
+// client frames this page), and a failure is silent. It only serves the offline page; the
+// browser's own Install option still works, so the dashboard keeps no install card of its own.
 import { t } from '../i18n.js';
 
 let lastUpdate = null;
-let installPrompt = null;
-let installed = false;
 
 const el = id => document.getElementById(id);
 const show = (node, visible) => { if (node) node.style.display = visible ? '' : 'none'; };
+// The status line's tone is a class (is-ok / is-error), not an inline colour.
+const tone = (node, kind) => { if (node) { node.classList.remove('is-ok', 'is-error'); if (kind) node.classList.add(kind); } };
 
 export function initAppShell() {
     try {
@@ -25,38 +24,7 @@ export function initAppShell() {
             navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
         }
     } catch { /* a blocked registration only means no offline page */ }
-    window.addEventListener('beforeinstallprompt', event => {
-        event.preventDefault();
-        installPrompt = event;
-        renderInstall();
-    });
-    window.addEventListener('appinstalled', () => {
-        installPrompt = null;
-        installed = true;
-        renderInstall();
-    });
 }
-
-function renderInstall() {
-    const status = el('app-install-status');
-    if (!status) return;
-    const standalone = window.matchMedia?.('(display-mode: standalone)').matches;
-    show(el('app-install'), !!installPrompt && !standalone && !installed);
-    status.textContent = standalone ? t('app_standalone') : installed ? t('app_installed') : installPrompt ? '' : t('app_hint');
-    show(status, !!status.textContent);
-}
-
-window.installApp = async function () {
-    if (!installPrompt) return renderInstall();
-    const prompt = installPrompt;
-    installPrompt = null;
-    try {
-        await prompt.prompt();
-        const choice = await prompt.userChoice;
-        if (choice?.outcome === 'accepted') installed = true;
-    } catch { /* the browser refused to show it again */ }
-    renderInstall();
-};
 
 function statusLine(u) {
     if (!u || u.state === 'unchecked') return t('updates_unchecked');
@@ -79,7 +47,7 @@ function renderUpdate(u, { busy = false } = {}) {
     if (!status) return;
     status.textContent = statusLine(u);
     const ok = ['up-to-date', 'current', 'behind', 'available', 'ahead'].includes(u?.state);
-    status.style.color = u?.state === 'error' ? 'var(--status-blocked)' : ok ? 'var(--status-done)' : '';
+    tone(status, u?.state === 'error' ? 'is-error' : ok ? 'is-ok' : '');
     const detail = el('update-detail');
     // A submodule's pointer and anything refused are in the message; a plain state needs nothing more.
     const showDetail = u && u.kind !== 'packaged' && (u.kind === 'submodule' || u.state === 'refused') && u.message && statusLine(u) !== u.message;
@@ -102,7 +70,6 @@ function renderUpdate(u, { busy = false } = {}) {
 
 /** Settings opened: the last check the server remembers, without checking again. */
 export async function showUpdateStatus() {
-    renderInstall();
     try {
         const res = await fetch('/api/update');
         renderUpdate(await res.json());
@@ -114,7 +81,7 @@ export async function showUpdateStatus() {
 window.checkForUpdates = async function () {
     const status = el('update-status');
     renderUpdate(lastUpdate || { state: 'unchecked' }, { busy: true });
-    if (status) { status.textContent = t('updates_checking'); status.style.color = ''; }
+    if (status) { status.textContent = t('updates_checking'); tone(status, ''); }
     try {
         const res = await fetch('/api/update?check=1');
         renderUpdate(await res.json());
@@ -128,7 +95,7 @@ window.applyUpdate = async function () {
     const status = el('update-status');
     renderUpdate(lastUpdate, { busy: true });
     show(el('update-now'), false);
-    if (status) { status.textContent = t('updates_running'); status.style.color = ''; }
+    if (status) { status.textContent = t('updates_running'); tone(status, ''); }
     let r;
     try {
         const res = await fetch('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: lastUpdate.token }) });
@@ -139,7 +106,7 @@ window.applyUpdate = async function () {
     renderUpdate({ kind: r.kind || 'checkout', state: r.state === 'updated' ? 'updated' : r.state, message: r.message });
     if (status) {
         status.textContent = r.state === 'updated' ? t('updates_done') : r.success ? (r.message || '').split('\n')[0] : `${t('updates_refused')} ${(r.message || '').split('\n')[0]}`;
-        status.style.color = r.success ? 'var(--status-done)' : 'var(--status-blocked)';
+        tone(status, r.success ? 'is-ok' : 'is-error');
     }
     // What happened and how to restart: the first two lines. The rest (leftover files, --clean) is
     // the terminal's business.

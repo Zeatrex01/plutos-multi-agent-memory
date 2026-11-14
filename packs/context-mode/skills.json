@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "id": "context-mode",
+  "name": "Context Mode",
+  "description": "Runs the upstream context-mode server with npx and adds a skill saying when to use it. No upstream code is shipped: https://github.com/mksglu/context-mode",
+  "homepage": "https://github.com/mksglu/context-mode",
+  "skills": [
+    { "name": "context-mode", "description": "Keeps large command outputs out of context; may shorten other tools' outputs, so read the PLUT_OS brief by part." }
+  ],
+  "mcpServers": {
+    "context-mode": {
+      "command": "npx",
+      "args": ["-y", "context-mode"],
+      "purpose": "run commands with large output (tests, builds, logs) so only a summary enters context",
+      "os": { "win32": { "command": "cmd", "args": ["/c", "npx", "-y", "context-mode"] } }
+    }
+  }
+}

@@ -1,8 +1,7 @@
 # PLUT_OS User Guide
 
 What PLUT_OS is, how to install it, how to bring a project in, and how the humans
-and AIs in that project work together through it. This is the canonical guide —
-the dashboard's Guide page summarizes it.
+and AIs in that project work together through it. This is the canonical guide.
 
 ## 1. What PLUT_OS is
 
@@ -23,19 +22,18 @@ Gemini/Antigravity, Cursor, Copilot — can participate. Git is the shared chann
 project carries the kit.
 
 **What you see first.** With no project open, PLUT_OS opens on **Projects**, where you add or
-resume one. With a project open it opens on **Home**: what needs you, the next setup step while
-there is one, what your AIs are doing and what happened recently. The menu has three groups:
-**Work** (Home, Board, Shared Table), **Knowledge** (Report, Research, Code map,
-Documents, Dependency graph)
-and **Setup** (Projects, Setup questions, Settings, Guide).
-Every page opens the same way: what it is for in one sentence, its actions, and a
-"How this page works" fold that is open on your first visit; an empty section says why it is
-empty and what to do, often as a sentence you can copy to your AI. The address keeps the page
-(`#board`), so a reload stays on it and Back returns to the last one.
+resume one. With a project open it opens on **Home**: the questions your AIs are waiting on you for
+(with their images and options), then a short status: the project, how many board items are open,
+the last session's next step, whether the hooks are on, and whether an AI is connected. The menu has
+four pages: **Home**, **Board** (tasks, plus the snapshot, watchers and hooks), **Projects** (add a
+project, install the kit, connect an AI, repair links) and **Settings** (language, light/dark,
+updates, where the data lives). The address keeps the page (`#board`), so a reload stays on it and
+Back returns to the last one.
 
-Dependency graph is **off by default**; turn any
-page on or off in **Settings → Pages in the menu**. Nothing is uninstalled while a page is off,
-and the MCP tools stay available to your AIs either way.
+The report, the story of the sessions, the code map and graph, research, skill packs and the council
+are read by your AIs through the MCP tools and by you in a terminal (`plutos report`, `plutos pack`,
+`node tools/council.mjs`); the dashboard pages that showed them were removed on 2026-11-14 (owner
+decision d-51e97352b22e: keep the dashboard, make it plain).
 
 ## 2. Installing PLUT_OS itself
 
@@ -86,9 +84,9 @@ Development mode never updates from the page.
 
 ### Installing as an app
 
-The dashboard is an installable web app: in Chrome or Edge, **Settings → Install as an app** (or the
-install icon in the address bar) gives PLUT_OS its own window and icon in the Start menu or the dock.
-Firefox and Safari show a line pointing to their own Install option where they have one. The app is
+The dashboard is an installable web app: in Chrome or Edge, the install icon in the address bar (or
+the browser menu's Install option) gives PLUT_OS its own window and icon in the Start menu or the dock.
+Firefox and Safari have their own Install option where they have one. The app is
 the same local dashboard: PLUT_OS must be running (`START_PLUT_OS.bat`, the portable app, or `node
 dashboard.mjs`). When it is not, the window shows "PLUT_OS is not running" with a Retry button instead
 of a connection error. That page is the only thing the service worker (`ui/sw.js`) keeps; it never
@@ -312,9 +310,11 @@ global Codex registration — blocks project reads and writes instead of guessin
 - **Claude Code** — `claude-code-local` hands the entry to `claude mcp add` (private to this
   project, stored by Claude in `~/.claude.json`, which PLUT_OS never edits); `claude-code` writes the
   repository's `.mcp.json` with `${CLAUDE_PROJECT_DIR:-.}/.plutos/plutos-launch.mjs`, so teammates
-  get the server too. The kit's `CLAUDE.md` imports `AGENTS.md`. The Board page's Hooks panel adds
-  the session brief, the guard, the push gate, the claim check and the session close to
-  `.claude/settings.local.json` (§7, "Hooks").
+  get the server too. The kit's `CLAUDE.md` imports `AGENTS.md`. Wiring Claude Code (`plutos connect
+  claude-code`, `plutos connect claude-code-local`, or the Connect panel's write button) switches the session brief
+  and the session close on, once per project; after that the hooks are yours to switch. The Board
+  page's Hooks panel adds or removes the session brief, the guard, the push gate, the claim check and
+  the session close in `.claude/settings.local.json` (§7, "Hooks").
 - **Codex** — `codex` writes `.codex/config.toml` for this trusted project (a relative launcher and
   the `PLUTOS_CODEX_PROJECT_CONFIG=1` marker); a missing file is created, an existing one is left for
   the prompt or manual route. It has no start hook, so it calls `session_start` first (`AGENTS.md`);
@@ -357,6 +357,19 @@ docs/handoff/*.lock/
 docs/handoff/*.tmp
 ```
 
+The kit's list goes on (generated indexes, the memory index, the runtime state below); Repair adds
+any line a project lacks. What under `.plutos/` is committed follows one rule: a file is **shared**
+when another clone, machine or cloud session needs it to act the same way and nothing in it is bound
+to this machine; it is **per machine** when it holds this machine's paths, keys or process ids, or
+is a mirror or cache rebuilt from tracked files. Shared, so commit them: `plutos-launch.mjs`,
+`drawers.json`, `packs.json`, `checks.json`, `claims-baseline.json`, `.plutos/research/` (but not its page
+cache, `.plutos/research/_cache/`). Per machine, so git-ignored: `local.json`, `plutos.config.json`,
+`memory.db`, `plutos-watcher.cjs`, `approvals/` (tickets sealed with this machine's key, dead in 30
+minutes), `council/` (rooms run by this machine's CLI seats; the ruling is recorded with
+`session_end`), `state.json` and `logs/` (the dashboard's mirror of `CONTINUITY.md`, rewritten on
+every session), and `usage.jsonl` with its rotated `usage.1.jsonl` (the usage log, §7). `lib/kit-history.mjs` (`PLUTOS_STATE`) keeps the list and each reason; `plutos audit`
+reports a shared file git does not hold.
+
 If you explicitly enable **Automatic shared context (Claude Code)**, PLUT_OS also adds
 `.claude/settings.local.json` to `.gitignore`. The Project Kit alone does not create that
 private hook setting. A board watcher adds `.claude/settings.local.json` and
@@ -386,15 +399,14 @@ scope. Nothing third-party is installed silently.
 
 An Agent Skill is a folder with a `SKILL.md` that tells an AI tool how to do one kind of task. Your
 AI tools read them from two folders in the project: `.claude/skills` (Claude Code) and
-`.agents/skills` (Codex and Gemini CLI). The Skills page (Setup group) lists every skill folder it
+`.agents/skills` (Codex and Gemini CLI). `plutos skills [path]` lists every skill folder it
 finds there, which tools read it, whether the project or a pack put it there, and the pack's own
 measurement line for it (or "not measured"; PLUT_OS makes no score up). To add a skill of your own,
 put it at `.agents/skills/<name>/SKILL.md` (and the same folder under `.claude/skills` for Claude
-Code); `plutos skills [path]` prints the same list in the terminal.
+Code). (The dashboard's Skills page that showed the same list was removed on 2026-11-14.)
 
 A pack is a folder on this computer that brings several skills: `skills/<name>/SKILL.md` folders and
-a `skills.json` (or `module.json`) with its id and name. Register it once in the page's "Add a pack
-folder" field or with `plutos pack add <folder>`; nothing is copied yet. **On** (`plutos pack on <id>
+a `skills.json` (or `module.json`) with its id and name. Register it once with `plutos pack add <folder>`; nothing is copied yet. **On** (`plutos pack on <id>
 [path]`) copies each skill folder into both `.claude/skills` and `.agents/skills` of the open project,
 creating what is absent and refusing the whole switch if a folder of that name is already there from
 somewhere else. **Off** removes only the files the pack placed and that you have not changed; an
@@ -402,9 +414,35 @@ edited or added file stays, and the message names it. The copied folders are ord
 they show as untracked in git until you commit or ignore them. `plutos pack list` and `plutos pack
 forget <id>` manage the registry; forgetting a pack leaves what it placed until you switch it off.
 
-Claude Code also loads skills from its plugins (`claude plugin install …`); PLUT_OS cannot see those,
-so a plugin and a pack can carry the same skill name twice. The page shows the folders it read, so a
-duplicate is yours to spot.
+PLUT_OS ships two packs of its own, registered by name without a path: `plutos pack add
+codebase-memory` and `plutos pack add context-mode`, then `plutos pack on <id>`. Each adds one
+upstream MCP server to the project's `.mcp.json` (run with npx; Claude Code asks once before it
+starts it) and one short skill saying when to use it: Codebase Memory
+(https://github.com/DeusData/codebase-memory-mcp) for function-level callers and the impact of a
+change across many files, when `plutos_code_lookup` is not enough; Context Mode
+(https://github.com/mksglu/context-mode) to keep large command outputs out of the AI's context. Context
+Mode may also shorten other tools' replies, so its skill tells the AI to read the PLUT_OS brief in
+parts. PLUT_OS copies no code of either project; their own licences apply.
+
+Claude Code also loads skills from its plugins and from your own folders (`~/.claude/skills`,
+`~/.agents/skills`, and the skills and plugins your claude.ai account syncs), so the same skill can
+be on the machine twice. `plutos skills inventory [path] [--json]` lists every skill a client would
+load, from PLUT_OS's own skills, the registered packs, the project, your user folders and Claude Code
+plugins (installed and synced), each with its source, hashes, version and gates. It groups copies that
+share a name and says which kind each group is: **identical**, **different versions** (naming the
+copy that matches PLUT_OS's or a pack's current files and which differ; the newest by file time is
+shown only as a weak hint) or **name clash** (different skills that share a name; the client may load
+either). It also lists the same `SKILL.md` under two names, every skill no one has measured (PLUT_OS
+shows a pack's own measured line and judges nothing else), and one line to act on per finding. It
+only reads; exit 0.
+
+To keep a copy of one of PLUT_OS's or a pack's skills somewhere else and know when it falls behind,
+`plutos skills export <name> <dest-folder>` copies it to `<dest-folder>/<name>/` with a
+`.plutos-source.json` record (where it came from, its hash, when). The inventory then marks that copy
+**current**, **stale** (the source changed since), **locally edited** or **source gone**. Export
+again with `--force` to refresh a copy you have not edited; one you have edited is refused, with the
+files named, unless you add `--force-local` (your edited files are first kept in the data folder
+under `skill-exports/replaced/`). Name a pack's skill as `<pack-id>:<name>` when two sources share it.
 
 ### Any project, any stack
 
@@ -449,40 +487,29 @@ script) is yours to keep or move. **Ask an AI** lists one prompt per document wh
 checked against the code. The rest is yours, each with the command that does it. `--json` gives the
 whole report.
 
-## 4. The recommendation engine (Setup questions page)
+## 4. The recommendation engine
 
-The Setup questions page always shows a **Detected** card — a live, read-only scan of the project's
-actual files: stack (node/unity/python), frameworks found in `package.json` (react, next,
-express, ...), whether tests exist, whether it's a monorepo, whether it's a git repo. This
-needs **zero interview and zero AI** — observed projects get it without installing. A **Rescan**
-button re-runs it anytime.
-
-That scan combines with any interview answers (if you opted in) into one **Recommendation**:
-whether board coordination matters (a team, several AIs or a `package.json` workspaces monorepo) and
-why, with a note when a game engine is recognised (its guidance comes from a game domain pack). It is
-advice for board coordination; the role bundles and the role advice that used to point at them
-were removed (2026-10-29 and 2026-11-04). Native shared context and code indexing are already
-present, so the recommendation engine does not create third-party MCP tasks, and the
-"Install recommended setup" button left with the route on 2026-11-04; optional MCP extensions remain
-selective actions on the Projects page's Connect panel ("Extra tools your AI can set up"). `GET /api/recommendations`
-powers this; `lib/recommend.mjs` is the single mapping used
-both here and by the interview file's own Recommendation section.
+`lib/recommend.mjs` scans the project's actual files, read-only: stack (node/unity/python),
+frameworks found in `package.json` (react, next, express, ...), whether tests exist, whether it's a
+monorepo, whether it's a git repo. This needs **zero interview and zero AI**. That scan combines
+with any interview answers into one **Recommendation**: whether board coordination matters (a team,
+several AIs or a `package.json` workspaces monorepo) and why, with a note when a game engine is
+recognised. Native shared context and code indexing are already present, so it creates no
+third-party MCP tasks; optional MCP extensions remain selective actions on the Projects page's
+Connect panel ("Extra tools your AI can set up"). The interview file's own Recommendation section
+shows it. (The Setup questions page and `GET /api/recommendations` were removed on 2026-11-14.)
 
 ## 5. The Setup interview (project profile)
 
 **The interview is optional.** Existing/already-configured projects skip it entirely — no file,
 no questions (AGENTS.md Rule 0 only fires when the file exists). Choose it at Add Project
-("Start with Setup interview"), via `node cli.mjs <path> --interview`, or start one later from
-the Setup questions page (answering the first question creates the file).
+("Start with Setup interview") or via `node cli.mjs <path> --interview`.
 
 `docs/handoff/PROJECT_INTERVIEW.md` holds 5 quick questions (project type, stage, goal,
-main AI, team size). Two ways to fill it — both write the **same file**:
+main AI, team size). AGENTS.md Rule 0 tells every AI: if answers are blank, ask the user, write
+the answers into the file, commit. (The dashboard's Setup questions page was removed on 2026-11-14.)
 
-- **Dashboard → Setup questions**: click the option chips; answers are saved instantly.
-- **Any AI**: AGENTS.md Rule 0 tells every agent — if answers are blank, ask the user,
-  write the answers into the file, commit.
-
-Once complete, the file's Recommendation section (and the Setup questions page) shows the
+Once complete, the file's Recommendation section shows the
 same recommendation as §4. Recommendations are suggestions — installation is always your click.
 
 ## 6. The command line (`plutos`)
@@ -506,10 +533,24 @@ current folder). The commands, as `plutos help` lists them:
   `wait` under "Board watchers" (§7).
 - `check --memory` and `memory list|find|open|verify|supersede|retire` are the memory report and the memory
   verbs, under "Memory: decisions and claims" and "Memory: find and the index" (§7).
+- `check --accept` raises the claims baseline, which silences findings, so like `approve` it needs your
+  interactive terminal: from a script or an AI it exits 1 and accepts nothing.
+- `decide` (and the `plutos_decide` and `session_end` tools) first turn any legacy DECISION digest line
+  without an id into a decision record, only when one is found, and say how many.
+- `rebind <new path> [--from <old path>] [--dry-run]`: after a project folder moved, rewires each AI client
+  whose config names the old absolute path, moves the hub entry and copies the shared `.plutos/` state the
+  new folder lacks; for a client PLUT_OS does not write it prints the exact manual step. `--dry-run` lists
+  the plan and writes nothing. `plutos_project_info` names this command in its fix when the open folder
+  carries the kit (`lib/rebind.mjs`).
+- `usage [path] [--days N] [--json]` reads the project's usage log (below, "Usage log — which AIs used
+  which tools"): which AIs called which PLUT_OS tools and hooks, sessions started and ended, tools never
+  called, sub-agent starts against tool calls, and days with commits but no session record. It only reads.
 - `audit [path] [--json] [--clean]` reports what older PLUT_OS versions left in a project and what else
   needs a look, and `--clean` moves the leftovers into the Hub (§3, "Auditing an older project").
 - `skills [path]` lists the project's Agent Skills; `pack add <folder>`, `pack list`, `pack on <id>
-  [path]`, `pack off <id> [path]` and `pack forget <id>` manage packs (§3, "Skills and packs").
+  [path]`, `pack off <id> [path]` and `pack forget <id>` manage packs; `skills inventory [path]
+  [--json]` lists every skill on the machine with its duplicates and exports, and `skills export
+  <name> <dest-folder> [--force] [--force-local]` makes a tracked copy (§3, "Skills and packs").
 
 `plutos check` reads the project's current documents, its board and its session record, and lists
 what they claim that the repository does not show: a path that is not there, a `file:line` past
@@ -553,12 +594,12 @@ style, so I can design our landing page in it".
    quotes), principles (do / avoid / note, resting on findings) and open questions.
 5. **It closes branches** — answered only with a finding under it; a dead end needs a reason.
 6. **Brief.** `research_topic` (brief) compiles the learning brief from the records and saves
-   it to `.plutos/research/<topic>/brief.md`. Research page → *Copy brief* to hand it on.
+   it to `.plutos/research/<topic>/brief.md`, the file to hand on.
 
 What PLUT_OS refuses, whatever the AI says: a finding with no fetched source, a quote that is
 not on the page, a principle with no finding under it, going past the page or depth budget.
-The Research page lists what is still open (unanswered branches, uncited sources,
-single-source claims) until the topic is ready.
+`research_topic` lists what is still open (unanswered branches, uncited sources,
+single-source claims) until the topic is ready. (The dashboard's Research page was removed on 2026-11-14.)
 
 The same tools run without PLUT_OS as a standalone MCP server: `node tools/make-research-mcp.mjs <folder> --zip`
 builds it from a terminal (the dashboard's Export MCP button left on 2026-11-04), and its README says how to
@@ -614,14 +655,13 @@ priority badge and sorts to the top of its column. A repaint from the auto-refre
 never drops the card you had open, a column's scroll position, or half-typed input in the
 assign form.
 
-### Return summary and recorded verification
+### Questions waiting and recorded verification
 
-Home's **Needs you** card compares the current project boards with the last
-acknowledged view in this browser. The first successful visit starts the comparison;
-**Mark seen** advances it. It lists newly observed DONE and BLOCKED states and current
-owner questions. Each item opens its task or question. Missing or archived cards are not
-inferred completions, and the summary is not a complete event history. Browser storage
-is bounded to 20 projects and 2,000 task keys; clearing it starts a new baseline.
+Home opens on **Waiting for you**: every `plutos_ask` question an agent is blocked on, with
+its options, any images it attached, a reject button and an optional note back to the agent.
+The Home item in the sidebar carries the count on every page. Below it, a short status list
+names the project, the open board items (to do, in progress and blocked, counted in full), the
+last session's Next, how many hooks are on, and whether an AI is connected.
 
 Expand a Board card to record **unverified**, **passed** or **failed**, independently of
 its workflow status. Passed requires an evidence URL or project-relative artifact path.
@@ -687,10 +727,25 @@ than a scheduler.
 The Board page's **Hooks** panel switches five hooks per project, written into Claude Code's
 `.claude/settings.local.json` on this machine (gitignored) and taking effect in the next session; it also
 shows whether Codex runs the claim check from `.codex/hooks.json` (`node lib/claim-check.mjs install --codex`
-writes it; Codex runs it once you trust it in `/hooks`):
+writes it; Codex runs it once you trust it in `/hooks`). Wiring Claude Code to a project switches the
+session brief, the session close and the subagent tool map on the first time (none sends a turn back or
+blocks a command); `.plutos/local.json` records which ones it switched on (`hooksDefaulted`, a list of hook ids)
+and any hook you switch off in the panel (`hooksOff`), so wiring again never switches one back on. A project
+wired before the subagent hook existed gets that one hook once, at its next Claude Code session start
+(the session brief hook) or `plutos update`; a hook you switched off stays off:
 
 - **Session brief** (`SessionStart`) hands the brief to Claude as a session opens and after
-  `/clear` or a compaction.
+  `/clear` or a compaction. The brief is paged: part 1 (at most about 3,500 characters, the same for
+  the hook and `session_start`) carries a summary of the working agreement, what the project is, its
+  readiness and scope, where the last session left off, new results files, settled decisions, open board items and the tool map; its last line names
+  `session_start` with `{"part": 2}` for the full agreement and the rest. A side session that must not
+  write anything calls `session_start` with `{"readOnly": true}`: nothing is written, and it leaves its
+  findings in one `docs/handoff/results/YYYY-MM-DD-<topic>.md` file or in its final answer.
+- **Subagent tool map** (`SubagentStart`, every agent type, Explore and Plan included) gives each
+  subagent a short map of PLUT_OS's look-up tools (`plutos_context_for_task`, `plutos_code_lookup`, the
+  research drawer) and one line per MCP server an active pack brings, since subagents load neither
+  CLAUDE.md nor AGENTS.md. No model call; it prints nothing outside a PLUT_OS project. Switch it with
+  `plutos hooks on|off subagent`.
 - **Safety guard** (`PreToolUse`) refuses force pushes, `git reset --hard`, `git clean -f`,
   discarding the whole tree's changes, a recursive delete without a literal absolute path and a
   AI co-author trailer or AI session link in a commit message.
@@ -699,13 +754,20 @@ writes it; Codex runs it once you trust it in `/hooks`):
   `node "<PLUT_OS folder>/lib/push-gate.mjs" run <test command>`. PLUT_OS's own `npm test` runs
   that way; in another project a plain `npm test` records nothing unless its test script does the
   same. Until a pass is recorded, every push of the project is refused: the panel says so, and the
-  refusal names the exact command for this install.
+  refusal names the exact command for this install. A project makes the gate hold its own checks
+  too by declaring them in `.plutos/checks.json`, tracked in git (see **Declared checks** below);
+  chaining them into the recorded command, quoted as one, also works:
+  `node "<PLUT_OS folder>/lib/push-gate.mjs" run "npm test && python tools/arch_lint.py"`
+  records a pass only when every part exits 0 (put the same line in the project's test script and
+  a plain `npm test` does it).
 - **Claim check** (`Stop`) holds Claude's final message against git and the disk: tests said to
   have passed on an older version than the work, a push that did not happen, a file named as
   created that does not exist, a focused or skipped test, assertions removed while the tests are
   said to pass, a fix that edits a test file with the code without saying what the test change
   is, tests said to pass with no passing stamp for this tree while the transcript shows no test
-  command run (or the last one failed), work called done that no session record holds. A false
+  command run (or the last one failed), work called done that no session record holds, and, in a
+  project that declares checks, work called done or fixed while the last pass was on another tree
+  or a declared check failed (it reads the push gate's record and runs no check). A false
   claim is sent back once
   with the reason; if the next stop keeps it, the
   stop goes through and the claim is recorded as failing, which the next briefs show for a week.
@@ -713,10 +775,32 @@ writes it; Codex runs it once you trust it in `/hooks`):
   `lib/claim-check.mjs` also serves as its Stop hook (`node lib/claim-check.mjs install --codex`).
 - **Session close** (`SessionEnd`) records a session that ends without `session_end` from git: its
   commits and the files it left changed, with a note that nothing it learned or decided was
-  recorded. No model call; when the shared-context capture on the Projects page's Connect panel is on, its fuller
+  recorded at the end. A decision the owner stated survives this only when it was recorded on the spot
+  (`plutos_decide`, or `plutos decide "<text>"`; working agreement rule 9). No model call; when the shared-context capture on the Projects page's Connect panel is on, its fuller
   record is left to do it.
 
 Each also has a command line: `node lib/push-gate.mjs install`, `node lib/claim-check.mjs install`.
+
+**Declared checks.** A project names the checks that count as part of "done" in
+`.plutos/checks.json`, a list the core runs without knowing what it measures:
+
+```json
+[{ "name": "arch-lint", "command": "python tools/arch_lint.py",
+   "meaning": "a call by name in a string, or an untyped reference, was added" }]
+```
+
+The push gate's `run` runs the test command, then every check in order (each to the end, so one run
+names every failure), and records a pass only when all of them exit 0. A failing check is named with
+its `meaning` as it runs and again in the push refusal. A file that does not read as a list of
+`{ name, command, meaning }` records no pass, so a check never stops running unnoticed. Each run's
+results are kept in the git directory beside the pass stamp, never committed. With the claim check
+on, "done" or "fixed" in such a project is sent back when the tests and checks have not passed on
+the work as it stands, or a declared check failed on it; the Stop hook has 15 seconds, so it reads
+that record and runs nothing. The file is shared project state: commit it, so every clone and every
+AI holds the same checks. Its commands are code that runs with your rights, like `package.json`
+scripts: a cloned repository's or a pulled commit's checks run on the next `run`. When the file is
+new or changed since the last run, the run, the push refusal and the claim check print each check's
+command, so read them before running the tests through the gate.
 
 The push gate also goes in as a git `pre-push` hook (switching it on in the Hooks panel does both,
 or `node lib/push-gate.mjs git-install`), so a push from Codex, Gemini CLI, Cursor or a terminal
@@ -804,8 +888,8 @@ infallible.
 Sessions past the budget rotate to `docs/handoff/archive/SESSIONS-<YYYY-MM>.md`
 automatically — the live ledger stays short and the decision digest persists. Because the
 ledger and context registry are committed, memory is **shared across vendors**: Gemini can
-inherit what Claude captured yesterday, with the same freshness label. `GET /api/continuity`
-returns the ledger plus the context assessment, shown on the Report page under "What your AIs have recorded". The protocol
+inherit what Claude captured yesterday, with the same freshness label. `plutos report`
+prints the ledger with the context assessment (the Report page and `GET /api/continuity` were removed on 2026-11-14). The protocol
 half is in `AGENTS.md` under "A session": start from the brief, finish with `session_end`.
 
 ### Memory: decisions and claims
@@ -927,20 +1011,38 @@ restart or reload Claude Code after either change.
 
 ### AI costs — what this project's AI work used
 
-Turn the page on once in Settings → **Pages in the menu** (it is off by default). Knowledge → **AI costs** then shows the open project's own ledger: Claude Code's records for this folder,
-read on this computer, split by agent, model and session (work is output plus thinking; cache reads are
-shown apart). Nothing is installed or downloaded and nothing leaves the machine. Below it, **Run CodeBurn**
-asks the optional CodeBurn tracker (`npm i -g codeburn`) for its cost estimate. CodeBurn adds up every
-project on the computer, which the card says, and it runs only when you press the button. Other AI tools
-(Codex, Cursor, Gemini CLI) keep their records elsewhere and are not in the ledger yet.
+`plutos_usage` gives your AI the open project's own ledger: Claude Code's records for this folder,
+read on this computer, split by agent, model and session (work is output plus thinking; cache reads
+are shown apart). Nothing is installed or downloaded and nothing leaves the machine. The dashboard's
+AI costs page and its CodeBurn button were removed on 2026-11-14.
+
+### Usage log — which AIs used which tools
+
+Every PLUT_OS MCP tool call (drawer tools included) and every hook run (the session brief, a sub-agent
+start, session close) adds one JSON line to the project's `.plutos/usage.jsonl`:
+`{t, ai, kind: "tool"|"hook", name, ok, ms}`, plus `agent` (the sub-agent type) on a sub-agent start and
+`readOnly` on a read-only `session_start`. A brief from `/clear` or a compact is recorded as `brief:clear` or
+`brief:compact`.
+Arguments, outputs, prompts and paths are never written. The file is per machine and git-ignored; at
+2 MB it rotates to `.plutos/usage.1.jsonl`, so there are at most two files. Nothing is written outside a
+PLUT_OS project, and a failed write never changes a tool's result or a hook's output (`lib/usage-log.mjs`).
+
+`plutos usage [path] [--days N] [--json]` (default 7 days) and `GET /api/usage?days=N` read it
+(`lib/usage-report.mjs`): per AI, tool calls and failures, sessions started (startup briefs, and
+`session_start` calls that are not read-only and not within 15 minutes of that AI's brief) and ended (`session_end` calls), the session records in `CONTINUITY.md`, and sub-agent
+starts; the ten tools used most; listed tools never called; and days with git commits but no session
+record. The log cannot tell which agent made a call, so sub-agent use is a ratio, not an attribution.
+Home shows one line: "Last 7 days: N AIs, N tool calls, N sessions". This is not `plutos_usage`, which
+reports token use.
 
 ### The Status Report — the third map
 
 PROJECT_MAP answers "what is this project", CODEINDEX answers "where does the code live"
 (a small catalog at `docs/ai/CODEINDEX.md`, then one shard per folder under
 `docs/ai/codeindex/` — open only the shard you need);
-the **Report page** answers **"where are we"** — so you glance instead of going off to read
-the documents yourself:
+the **status report** answers **"where are we"** (`plutos report` in a terminal, `status_report`
+for your AI; the dashboard's Report page was removed on 2026-11-14, and Home shows its open board
+count and the last session's next step):
 
 - **At a glance** — commits/lines/contributors in the chosen window (7/30/90 days), plus
   live board counts (in progress / TODO / blocked).
@@ -963,23 +1065,12 @@ recorded yet"), not guessed. The `status_report` MCP tool gives your AI the same
 standing instruction: **present it in the user's own language** (the facts and structure stay).
 Ask for a "status report", in your own language, and the AI calls it.
 
-### The Story Deck — the same history, in plain language
+### Story lines — the same history, in plain language
 
-The status report runs the project; the **story deck** explains it. Every `session_end` can
-include a `story`: one or two plain sentences a non-technical reader gets ("Payments work now: a
-customer can actually buy the product"), with no jargon and no file names (the "Finish" step of
-`AGENTS.md` asks every agent for one). The live ledger and the rotated archives are merged in
-order, so nothing is lost, into a pitch-style presentation: **the project's roadmap as a
-narrative, built one session at a time.** Past history cannot be rebuilt; from the first story
-on, the deck builds itself.
-
-- **`/deck`** — standalone slide page (scroll-snap, one slide per session), linked from the
-  Report page's "Story Deck" button.
-- **`project_deck` MCP tool** — the same deck as markdown, with the standing instruction to
-  present it in the user's own language, pitch-deck style. Ask your AI to "merge the sessions
-  into a presentation" and this is what it draws from.
-- Sessions that recorded no story fall back to their technical headline, honestly labeled —
-  a gap is worse than a plain fact.
+Every `session_end` can include a `story`: one or two plain sentences a non-technical reader gets
+("Payments work now: a customer can actually buy the product"), with no jargon and no file names
+(the "Finish" step of `AGENTS.md` asks every agent for one). They stay in the session records. The
+Story Deck page that turned them into slides (`/deck`) was removed on 2026-11-14.
 
 ### Document hygiene — the anti-rot layer
 
@@ -1011,17 +1102,17 @@ performs the cleanup.
 Boards rot by growing. Documents stay short and authoritative-looking while they quietly stop
 matching the code, so a stale document does not look stale: it looks like an answer.
 
-The **Documents** page measures it. For every markdown file in the project root and under
+The Board's hygiene panel and `plutos audit` measure it (the Documents page and its map were removed
+on 2026-11-14). For every markdown file in the project root and under
 `docs/`, PLUT_OS collects the paths that document *itself* names — a path in backticks, or a
 markdown link that resolves to a real file — and checks which of them changed in the commits
 since the document was last committed.
 
-- **Drifted** — amber on the map, with the changed files named in the details panel. Something
-  this document describes has moved.
+- **Drifted** — the changed files are named. Something this document describes has moved.
 - **Matches the code** — every file it names is unchanged since it was written.
 - **Names no files** — nothing to check against; a protocol or prose document is not accused
   of being stale just because the codebase moved.
-- **Not committed yet** — git has no answer, and the panel says so rather than reporting clean.
+- **Not committed yet** — git has no answer, and the report says so rather than reporting clean.
 
 Counting commits alone would be useless (a README does not rot because a shader it never
 mentions changed); measuring against the files a document names keeps the amber worth reading.
@@ -1050,21 +1141,20 @@ the admin drawer, closed by default: a call to one says how to open it.
 |---|---|
 | `plutos_project_info` | Safety diagnostic: the exact project this MCP process is bound to, and whether the binding is trusted |
 | `board_read` / `board_update` | Read/upsert a board tier (`board: main\|agents`; a missing board means main, any other name is refused); statuses TODO/IN_PROGRESS/DONE/BLOCKED, `assignee`, `result` references |
-| `plutos_modules` | Optional tool groups (drawers): `list`, `open` or `close` the research, code and admin drawers for this project. A closed drawer's tools are unlisted and cost no context; the choice is shared by every AI on the project (`.plutos/drawers.json`). Without a choice a drawer is closed unless the project already uses it (a studio host, a research topic) |
-| `plutos_context_for_task` | Before a task: give it the task in a sentence (any language; a file or function name helps) and get the files to open first, ranked, each with its reason (named, declares a symbol you mentioned, matches the task's words, or uses / is used by one of those) and a confidence, plus at most one memory record under `Memory:` when one stands above the floor. Built from the code graph in memory; writes only the git-ignored memory index. Read-only |
-| `roster_read` / `agent_register` | See who exists / register the agents you spawn |
+| `plutos_modules` | Optional tool groups (drawers): `list`, `open` or `close` the research and admin drawers for this project. A closed drawer's tools are unlisted and cost no context; the choice is shared by every AI on the project (`.plutos/drawers.json`). Every drawer is closed until the project opens it |
+| `plutos_code_lookup` | File-level look-up: where a file or symbol is declared, what its file uses and what uses it |
+| `plutos_context_for_task` | Before a task: give it the task in a sentence (any language; a file or function name helps) and get the files to open first, ranked, each with its reason (named, declares a symbol you mentioned, matches the task's words, or uses / is used by one of those) and a confidence, plus at most one memory record under `Memory:` when one stands above the floor. Built from the code graph in memory, plus the declarations of files the code map does not parse (SQL, C++ .cc/.hh, Objective-C, Dart, Scala, Elixir, Zig, web components, shaders; one shared table, `lib/file-types.mjs`, says which); a word such as deploy, schema, scene or project settings also offers that concern's usual files (`vercel.json`, `migrations/`, `project.godot`). Writes only the git-ignored memory index. Read-only |
 | `plutos_create_agent` | Create a new subagent: writes its definition (`.claude/agents/` for Claude Code, `.agents/<name>/AGENT.md` for any other AI) and registers it on the roster in one call |
-| `plutos_system_status` (*admin*) | Active MCPs; native PLUT_OS is complete with the coordinator and lists third-party extensions as optional |
 | `session_start` / `session_end` | Read the bounded brief / record work, decisions, and evidence-bearing learned claims |
-| `project_snapshot` | One self-contained markdown handover, including uncommitted and untracked work |
-| `status_report` | The owner's status report — commits, recorded sessions, board state, next steps, watch-outs |
-| `project_deck` (*admin*) | The story deck — every recorded session's plain-language story, chronologically |
+| `project_snapshot` (*admin*) | One self-contained markdown handover, including uncommitted and untracked work |
+| `status_report` (*admin*) | The owner's status report — commits, recorded sessions, board state, next steps, watch-outs |
+| `plutos_usage` (*admin*) | Token use of this project's Claude Code sessions (Claude Code only) |
 | `plutos_capture_session` | Internal endpoint for the explicitly enabled capture hook; listed only where capture is on, validates and queues only |
 | `init_roadmap` (*admin*) | Bootstrap the kit into the project |
 | `plutos_ask` | Approval gate: stop and ask the owner before an irreversible or ambiguous step |
 
 The MCP server also writes a heartbeat (`mcp_status.json` under stable per-user app data)
-that the dashboard's Home orbit and top bar read — so you can see which AI clients are connected.
+that the dashboard's top bar and Home status read — so you can see which AI clients are connected.
 
 ## 9. A typical day
 

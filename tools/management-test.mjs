@@ -80,9 +80,9 @@ try {
     process.env.PLUTOS_HOME = hub;
     const { watcherScript } = await import('../lib/watcher.mjs');
     const hook = path.join(tmp, 'watcher.cjs');
-    fs.writeFileSync(hook, watcherScript('Claude', port, a));
+    fs.writeFileSync(hook, watcherScript('Claude', a));
     const runWatcher = () => spawnSync(process.execPath, [hook], {
-        cwd: a, env: { ...env, PLUTOS_AGENT: 'Claude', PLUTOS_BOARD_URL: `${base}/api/board` },
+        cwd: a, env: { ...env, PLUTOS_AGENT: 'Claude' },
         input: JSON.stringify({ cwd: a, stop_hook_active: false }), encoding: 'utf8', timeout: 10000
     });
     const whileB = runWatcher();
@@ -111,11 +111,11 @@ try {
 
     // Owner-management features: real HTTP boundaries, source identity and recoverable repair.
     await post('/api/workspaces/switch', { path: a });
-    const summaryUrl = `/api/return-summary?project=${encodeURIComponent(a)}`;
-    check('return summary requires explicit project identity', (await api('/api/return-summary')).status === 400);
-    check('return summary rejects the wrong selected project', (await api(`/api/return-summary?project=${encodeURIComponent(b)}`)).status === 409);
-    const firstSummary = (await api(summaryUrl)).data;
-    check('return summary carries only this project tasks', firstSummary.projectRoot === fs.realpathSync(a) && firstSummary.entries.every(e => e.title !== 'B-only'));
+    // Home reads the waiting questions through the project-scoped approvals route.
+    const approvalsUrl = `/api/approvals?project=${encodeURIComponent(a)}`;
+    check('Home question list rejects the wrong selected project', (await api(`/api/approvals?project=${encodeURIComponent(b)}`)).status === 409);
+    const boardA = (await api('/api/board')).data;
+    check('the board read carries only this project tasks', boardA.projectRoot === fs.realpathSync(a) && boardA.entries.every(e => e.title !== 'B-only'));
     await post('/api/project/install', {});
     const proof = path.join(a, 'docs', 'check.log');
     fs.writeFileSync(proof, '<script>proof stays plain text</script>');
@@ -152,7 +152,7 @@ try {
 
     const { createApproval } = await import('../lib/approvals.mjs');
     const ticket = createApproval(a, { agent: 'Test seat', question: 'Synthetic owner decision?' });
-    check('return summary includes pending owner decisions', (await api(summaryUrl)).data.pendingApprovals.some(q => q.id === ticket.id));
+    check('Home question list includes pending owner decisions', (await api(approvalsUrl)).data.pending.some(q => q.id === ticket.id));
     // A/B design pick: the card's images come only from docs/ai/design-picks/ of the open project.
     fs.mkdirSync(path.join(a, 'docs', 'ai', 'design-picks', 'home'), { recursive: true });
     fs.copyFileSync(path.join(a, 'docs', 'pixel.png'), path.join(a, 'docs', 'ai', 'design-picks', 'home', 'A.png'));
@@ -203,8 +203,8 @@ try {
     await post('/api/workspaces/add', { path: aliasProject });
     check('workspace exposes canonical request identity while retaining its alias', (await api('/api/workspaces')).data.activeProjectRoot === fs.realpathSync(realProject));
     await post('/api/board', { projectRoot: realProject, agent: 'Codex', title: 'Alias board task', status: 'TODO' });
-    const aliasSummary = (await api(`/api/return-summary?project=${encodeURIComponent(realProject)}`)).data;
-    check('canonical summary uses the registered alias sidecar', aliasSummary.entries.some(e => e.title === 'Alias board task'));
+    const aliasBoard = (await api('/api/board')).data;
+    check('the canonical board read uses the registered alias sidecar', aliasBoard.entries.some(e => e.title === 'Alias board task'));
 
     // A signalled or hung suite must fail the runner and must not keep later suites from running.
     // Every suite gets a result line, and the end names the failed ones again.
@@ -213,7 +213,7 @@ try {
     fs.copyFileSync(path.join(root, 'tools', 'run-all-tests.mjs'), path.join(runnerRoot, 'tools', 'run-all-tests.mjs'));
     for (const file of ['tools/smoke-test.mjs', 'tools/mcp-test.mjs', 'tools/build-test.mjs',
         'tools/watcher-test.mjs', 'tools/session-memory-test.mjs', 'tools/management-test.mjs',
-        'tools/return-summary-test.mjs', 'tools/verification-test.mjs', 'tools/repair-test.mjs', 'tools/approval-ui-test.mjs']) {
+        'tools/verification-test.mjs', 'tools/repair-test.mjs', 'tools/approval-ui-test.mjs']) {
         fs.writeFileSync(path.join(runnerRoot, file), file === 'tools/smoke-test.mjs' ? "process.kill(process.pid, 'SIGTERM');"
             : file === 'tools/mcp-test.mjs' ? 'setInterval(() => {}, 1000);' : `console.log(${JSON.stringify('ran ' + file)});`);
     }

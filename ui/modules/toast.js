@@ -1,5 +1,5 @@
-// Transient notification in the bottom-right corner, in the same style as the orbit's connect
-// notices (ui/modules/orbit.js): a glass card with a coloured dot and edge.
+// Transient notification in the bottom-right corner: plain text on the surface colour, with a
+// left edge in the status colour of its kind. No dot, no glow, no blur.
 //
 // The second argument started as a boolean `isError`, and most callers still pass one. But
 // 29 call sites across nine modules pass a VARIANT STRING instead — showToast(msg, 'success')
@@ -26,10 +26,9 @@ export function showToast(message, variant = false) {
     toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
     // cssText, appendChild and a guarded frame callback: plain DOM calls the smoke test's stub page has too.
     toast.style.cssText = `--toast:${TOAST_COLORS[kind]}`;
-    const dot = document.createElement('i');
     const text = document.createElement('span');
     text.innerText = message;
-    toast.appendChild(dot); toast.appendChild(text);
+    toast.appendChild(text);
     // One fixed stack in the corner, newest at the bottom, so several toasts read one above
     // the other instead of on top of each other.
     let stack = document.getElementById('toast-stack');

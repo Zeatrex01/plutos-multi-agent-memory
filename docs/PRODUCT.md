@@ -38,8 +38,8 @@ Third-party software keeps its own licence:
   npm package's name, version, licence and licence text, and the licence of the Node.js runtime the
   executable is a copy of. At present the bundled packages are the MCP SDK and its dependencies:
   MIT, ISC and BSD-3-Clause.
-- The vendored UI scripts in `ui/vendor/` (lucide, ISC; vis-network, Apache-2.0 or MIT)
-  carry their licence headers.
+- The vendored UI scripts in `ui/vendor/` (lucide, ISC) carry their
+  licence headers.
 
 Fonts and Godot export templates are not approved for download or redistribution. Ask the owner
 first.

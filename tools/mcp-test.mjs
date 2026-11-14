@@ -150,13 +150,36 @@ try {
         (init.result?.instructions || '').includes(proj), init.result?.instructions || '');
     const tools = await c.rpc('tools/list', {});
     const names = (tools.result?.tools || []).map(t => t.name);
-    check('tools/list returns the toolset', names.length >= 13, `got ${names.length}`);
+    check('tools/list returns the toolset', names.length >= 11, `got ${names.length}`);
+    const decideTool = (tools.result?.tools || []).find(t => t.name === 'plutos_decide');
+    check('plutos_decide takes the decision and an optional id it supersedes, not a self-declared AI name',
+        decideTool && !('ai' in decideTool.inputSchema.properties) && 'supersedes' in decideTool.inputSchema.properties
+        && /session_end/.test(decideTool.description), JSON.stringify(decideTool));
     // Listed only where capture is on (about 157 tokens per session elsewhere); still callable below.
     check('the capture tool is unlisted while capture is off', !names.includes('plutos_capture_session'));
-    check('a project that uses no drawer lists no code, research or admin tools', !names.some(n => n === 'plutos_code_lookup' || n.startsWith('research_') || n === 'project_deck' || n === 'init_roadmap') && names.includes('plutos_modules'));
-    // The drawer checks below need one drawer open, so open the code drawer the way an AI would.
-    const openCode = await c.call('plutos_modules', { action: 'open', id: 'code' });
-    check('an AI can open the code drawer', !isToolError(openCode) && /open: code/.test(contentText(openCode)), contentText(openCode));
+    check('a project that uses no drawer lists no research or admin tools', !names.some(n => n.startsWith('research_') || ['status_report', 'project_snapshot', 'plutos_usage', 'init_roadmap'].includes(n)) && names.includes('plutos_modules'));
+    // Plan 2026-11-14 section 3: code lookup is listed by default; agent_register, roster_read,
+    // project_deck and plutos_system_status are gone, and an old client that calls one gets a plain error.
+    check('plutos_code_lookup and plutos_create_agent are listed by default, still file-level',
+        names.includes('plutos_code_lookup') && names.includes('plutos_create_agent')
+        && /File-level/.test((tools.result.tools.find(t => t.name === 'plutos_code_lookup') || {}).description || ''));
+    check('the cut tools are neither listed nor served', !names.some(n => ['agent_register', 'roster_read', 'project_deck', 'plutos_system_status'].includes(n)));
+    for (const cutTool of ['agent_register', 'roster_read', 'project_deck', 'plutos_system_status']) {
+        check(`a call to the cut ${cutTool} is refused`, isToolError(await c.call(cutTool, {})));
+    }
+    const boardUpdateTool = tools.result.tools.find(t => t.name === 'board_update');
+    check('board_update keeps seven top-level params and folds role, needs, priority, verification into extra',
+        ['agent', 'title', 'status', 'result', 'note', 'assignee', 'expectedRevision', 'extra'].every(k => k in boardUpdateTool.inputSchema.properties)
+        && !['role', 'needs', 'priority', 'verification'].some(k => k in boardUpdateTool.inputSchema.properties)
+        && ['role', 'needs', 'priority', 'verification'].every(k => k in boardUpdateTool.inputSchema.properties.extra.properties), JSON.stringify(boardUpdateTool.inputSchema.properties));
+    const sessionEndTool = tools.result.tools.find(t => t.name === 'session_end');
+    check('session_end points to AGENTS.md for its field rules and stays short',
+        /AGENTS\.md/.test(sessionEndTool.description) && JSON.stringify(sessionEndTool).length < 1900, String(JSON.stringify(sessionEndTool).length));
+    check('no listed tool or the instructions send anyone to the dashboard',
+        !/dashboard|Connect panel/i.test(JSON.stringify(tools.result.tools) + (init.result?.instructions || '')));
+    // The drawer checks below need one drawer open, so open the admin drawer the way an AI would.
+    const openCode = await c.call('plutos_modules', { action: 'open', id: 'admin' });
+    check('an AI can open the admin drawer', !isToolError(openCode) && /open: admin/.test(contentText(openCode)), contentText(openCode));
     const initialPresence = readMcpStatus();
     check('initialized client presence carries the bound project', initialPresence.clients[c.srv.pid]?.project === path.resolve(proj));
     check('connect history carries the bound project', initialPresence.log.some(entry =>
@@ -165,6 +188,17 @@ try {
     check('project binding diagnostic is present', names.includes('plutos_project_info'));
     const projectInfo = JSON.parse(contentText(await c.call('plutos_project_info', {})));
     check('project diagnostic reports the exact bound root', projectInfo.projectRoot === path.resolve(proj), JSON.stringify(projectInfo));
+    check('a safe binding carries no fix', 'fix' in projectInfo && projectInfo.fix === null, JSON.stringify(projectInfo));
+    // The instructions map tasks to tools (feedback 2026-11-14 item 1) and promise no call-level
+    // callers: plutos_code_lookup is file-level (lib/code-tools.mjs).
+    const instructions = init.result?.instructions || '';
+    check('initialize instructions map tasks to tools, file-level only',
+        /which files a task touches: plutos_context_for_task/.test(instructions)
+        && /\(file-level\): plutos_code_lookup/.test(instructions) && /plutos_modules open research/.test(instructions)
+        && /plutos_ask/.test(instructions) && /plutos_decide/.test(instructions) && /only for judgment/.test(instructions)
+        && !/caller|calls? (this|a) function/i.test(instructions), instructions);
+    check('the core tasks and the agents-for-judgment rule fall in the first 512 characters a deferring client reads',
+        /session_start[\s\S]*plutos_context_for_task[\s\S]*only for judgment, not look-ups[\s\S]*plutos_code_lookup[\s\S]*plutos_ask/.test(instructions.slice(0, 512)), instructions.slice(0, 512));
     const disabledCapture = await c.call('plutos_capture_session', {
         session_id: 'manual-probe', transcript_path: path.join(proj, 'fake.jsonl'), cwd: proj, event: 'SessionEnd'
     });
@@ -214,10 +248,10 @@ try {
     check('the server declares that its tool list can change', init.result?.capabilities?.tools?.listChanged === true, JSON.stringify(init.result?.capabilities));
     const toolNames = async (cl) => ((await cl.rpc('tools/list', {})).result?.tools || []).map(t => t.name);
     const before = await toolNames(c);
-    check('an opened drawer is listed; an unused one is not', before.includes('plutos_code_lookup') && !before.includes('research_topic'));
+    check('an opened drawer is listed; an unused one is not', before.includes('status_report') && before.includes('plutos_usage') && !before.includes('research_topic'));
     const drawerList = JSON.parse(contentText(await c.call('plutos_modules', { action: 'list' })));
     check('plutos_modules list reports each drawer and its state', drawerList.drawers.some(d => d.id === 'research' && d.open === false && d.tools.includes('research_topic'))
-        && drawerList.drawers.some(d => d.id === 'code' && d.open === true));
+        && drawerList.drawers.some(d => d.id === 'admin' && d.open === true));
     const notesOpen = c.notifications.length;
     const firstOpen = await c.call('plutos_modules', { action: 'open', id: 'research' });
     await new Promise(r => setTimeout(r, 200));
@@ -230,7 +264,7 @@ try {
     await new Promise(r => setTimeout(r, 200));
     check('closing a drawer sends tools/list_changed', c.notifications.slice(notesBefore).some(n => n.method === 'notifications/tools/list_changed'));
     const afterClose = await toolNames(c);
-    check('a closed drawer\'s tools leave tools/list, the rest stay', !afterClose.some(n => n.startsWith('research_')) && afterClose.includes('plutos_code_lookup') && afterClose.includes('board_read'));
+    check('a closed drawer\'s tools leave tools/list, the rest stay', !afterClose.some(n => n.startsWith('research_')) && afterClose.includes('status_report') && afterClose.includes('board_read'));
     const modulesDesc = ((await c.rpc('tools/list', {})).result.tools.find(t => t.name === 'plutos_modules') || {}).description || '';
     check('plutos_modules names the closed drawer', /Closed now: research/.test(modulesDesc), modulesDesc);
     const refused = await c.call('research_topic', { action: 'list' });
@@ -271,6 +305,14 @@ try {
     const roleFieldRead = JSON.parse(contentText(await c.call('board_read', { board: 'agents' })));
     check("an entry keeps its 'role' field (the writer's role)", !isToolError(roleField)
         && roleFieldRead.entries.some(e => e.title === 'Role field kept' && e.fields.Role === 'designer'), JSON.stringify(roleFieldRead.entries.slice(-1)));
+    // `extra` carries role, needs, priority and verification; the old flat params still work (above) for one release.
+    const viaExtra = await c.call('board_update', { board: 'agents', agent: 'x', status: 'TODO', title: 'Via extra', extra: { role: 'reviewer', needs: ['api-design'], priority: 'P1' } });
+    const viaExtraEntry = JSON.parse(contentText(await c.call('board_read', { board: 'agents' }))).entries.find(e => e.title === 'Via extra');
+    check('board_update reads role, needs and priority from extra', !isToolError(viaExtra) && viaExtraEntry?.fields.Role === 'reviewer'
+        && /api-design/.test(viaExtraEntry?.fields.Needs || '') && /P1/.test(JSON.stringify(viaExtraEntry)), JSON.stringify(viaExtraEntry));
+    await c.call('board_update', { board: 'agents', agent: 'x', status: 'TODO', title: 'Via extra', role: 'flat', extra: { role: 'nested' } });
+    check('extra wins over an old flat param given alongside it',
+        JSON.parse(contentText(await c.call('board_read', { board: 'agents' }))).entries.find(e => e.title === 'Via extra')?.fields.Role === 'nested');
 
     // --- 3. Hostile input: the server must refuse cleanly and stay alive ---------------------
     console.log('— hostile input —');
@@ -380,7 +422,8 @@ try {
         loopBoard.entries[0].agent === 'gemini' && loopBoard.entries[0].status === 'DONE'
         && /results\/stripe-webhooks\.md/.test(loopBoard.entries[0].fields['Result / Output'] || ''));
     check('the handover stays legible (who opened it)', loopBoard.entries[0].fields['Opened by'] === 'claude');
-    const loopRoster = JSON.parse(contentText(await cl.call('roster_read', {})));
+    // roster_read left on 2026-11-14: ROSTER.md is in every brief.
+    const loopRoster = { agents: parseRoster(fs.readFileSync(path.join(lp, 'docs', 'handoff', 'ROSTER.md'), 'utf8')) };
     check('both AIs and the created agent are on the roster',
         ['Claude', 'Gemini', 'stripe-integrator'].every(n => loopRoster.agents.some(a => a.name === n)),
         loopRoster.agents.map(a => a.name).join(', '));
@@ -413,7 +456,7 @@ try {
     await raCli.init(); await rbCli.init();
     const RN = 15;
     const fireRoster = (cl, owner) => Promise.all(Array.from({ length: RN }, (_, i) =>
-        cl.call('agent_register', { name: `${owner}-${i}`, owner, role: 'worker' }, 30000)));
+        cl.call('plutos_create_agent', { name: `${owner}-${i}`, owner, role: 'worker' }, 30000)));
     const [rra, rrb] = await Promise.all([fireRoster(raCli, 'claude'), fireRoster(rbCli, 'cursor')]);
     const rosterAcked = [...rra, ...rrb].filter(r => !isToolError(r) && !r.__timeout).length;
     const onRoster = parseRoster(fs.readFileSync(path.join(proj3, 'docs', 'handoff', 'ROSTER.md'), 'utf8'));
@@ -449,6 +492,25 @@ try {
     const wrongRootInfo = JSON.parse(contentText(await wrongRootClient.call('plutos_project_info', {})));
     check('project diagnostic reports the client-root mismatch',
         wrongRootInfo.safe === false && /Project mismatch/.test(wrongRootInfo.error || ''), JSON.stringify(wrongRootInfo));
+    check('the mismatch names the old and the new path and the restart step',
+        (wrongRootInfo.error || '').includes(`${boundProject} (old)`) && (wrongRootInfo.error || '').includes(`${otherProject} (new)`)
+        && /then restart/.test(wrongRootInfo.error || ''), wrongRootInfo.error);
+    const wrongRootFix = wrongRootInfo.fix || {};
+    const fixCommands = Object.values(wrongRootFix.commands || {});
+    check('the diagnostic fix connects the project the client has open, then restarts',
+        wrongRootFix.project === otherProject && fixCommands.length > 0
+        && fixCommands.every(steps => Array.isArray(steps) && steps[0].includes(process.platform === 'win32' ? `"${otherProject}"` : `'${otherProject}'`))
+        && /Restart the client/.test(wrongRootFix.then || ''), JSON.stringify(wrongRootFix));
+    // connect cannot write every client (lib/connect.mjs wireClient): claude-code-local gets
+    // plutos init/connect (the kit and the session hooks), then Claude's own command; a writable
+    // client gets plutos init/connect alone. Both Claude ids are listed whether the client is
+    // unknown (every id) or Claude Code (the runner's inherited CLAUDECODE). other-project has no
+    // launcher yet, so the kit is installed first (init). One command per step: no &&.
+    const [localInit, localAdd] = wrongRootFix.commands?.['claude-code-local'] || [];
+    check('the fix gives each client its steps, one command each',
+        /cli\.mjs['"] init ['"][^'"]+['"] --client claude-code-local$/.test(localInit || '') && /^claude mcp add .*--scope local/.test(localAdd || '')
+        && /cli\.mjs['"] init ['"][^'"]+['"] --client claude-code$/.test(wrongRootFix.commands?.['claude-code']?.[0] || '')
+        && !Object.values(wrongRootFix.commands || {}).flat().some(step => step.includes('&&')), JSON.stringify(wrongRootFix.commands));
     check('root mismatch writes to neither valid project',
         !fs.readFileSync(path.join(boundProject, 'docs', 'handoff', 'BOARD.md'), 'utf8').includes('must-not-land')
         && !fs.readFileSync(path.join(otherProject, 'docs', 'handoff', 'BOARD.md'), 'utf8').includes('must-not-land'));
@@ -457,6 +519,35 @@ try {
         !rejectedPresence.log.some(entry => entry.details === 'Board: must-not-land')
         && !Object.values(rejectedPresence.clients).some(entry => entry.project === boundProject));
     wrongRootClient.kill();
+
+    // Reconnecting is no cure for a roots reply with no local root, and with two advertised roots
+    // the open project is not known: no fix for the first, no path in the second.
+    const noRootClient = client(boundProject, { entry: boundStub, cwd: otherProject, withProjectRoot: false, roots: [] });
+    await noRootClient.init();
+    const noRootInfo = JSON.parse(contentText(await noRootClient.call('plutos_project_info', {})));
+    check('a failed roots check carries no fix', noRootInfo.safe === false && /Project verification failed/.test(noRootInfo.error || '') && noRootInfo.fix === null, JSON.stringify(noRootInfo));
+    noRootClient.kill();
+    const twoRootClient = client(boundProject, { entry: boundStub, cwd: otherProject, withProjectRoot: false, roots: [otherProject, tmpRoot] });
+    await twoRootClient.init();
+    const twoRootInfo = JSON.parse(contentText(await twoRootClient.call('plutos_project_info', {})));
+    check('two advertised roots: the fix names no project to rebind to',
+        /Project mismatch/.test(twoRootInfo.error || '') && twoRootInfo.fix?.project === '<the project you have open>', JSON.stringify(twoRootInfo.fix));
+    twoRootClient.kill();
+
+    // A project that moved: the folder the client has open carries the kit (its launcher), so one
+    // rebind from the old folder is the first step, before each client's connect (lib/rebind.mjs).
+    check('a folder without the kit gets no rebind step', wrongRootFix.rebind === undefined, JSON.stringify(wrongRootFix));
+    const movedProject = path.join(tmpRoot, 'moved-project');
+    kitProject(movedProject);
+    initTargetProject(movedProject, { structureOnly: true, skipGeneratedMaps: true });
+    const movedClient = client(boundProject, { entry: boundStub, cwd: movedProject, withProjectRoot: false, roots: [movedProject] });
+    await movedClient.init();
+    const movedFix = JSON.parse(contentText(await movedClient.call('plutos_project_info', {}))).fix || {};
+    const q = value => process.platform === 'win32' ? `"${value}"` : `'${value}'`;
+    check('a moved project: the fix names rebind from the old folder first',
+        typeof movedFix.rebind === 'string' && movedFix.rebind.endsWith(` rebind ${q(movedProject)} --from ${q(boundProject)}`)
+        && /run the rebind command first/.test(movedFix.then || ''), JSON.stringify(movedFix));
+    movedClient.kill();
 
     const matchingRoots = [boundProject];
     const matchingRootClient = client(boundProject, {
@@ -541,6 +632,9 @@ try {
         isToolError(legacyRead) && /Unsafe legacy Codex/.test(contentText(legacyRead)), contentText(legacyRead));
     const legacyInfo = JSON.parse(contentText(await legacyCodex.call('plutos_project_info', {})));
     check('binding diagnostic remains available while legacy Codex is blocked', legacyInfo.safe === false);
+    check('a Codex handshake gets only the Codex fix',
+        Object.keys(legacyInfo.fix?.commands || {}).join() === 'codex' && /connect codex /.test(legacyInfo.fix.commands.codex?.[0]),
+        JSON.stringify(legacyInfo.fix));
     const legacyPresence = readMcpStatus();
     check('legacy Codex diagnostic does not restore invalid presence',
         !legacyPresence.clients[legacyCodex.srv.pid] && !legacyPresence.log.some(entry => entry.pid === legacyCodex.srv.pid));
@@ -568,7 +662,6 @@ try {
     const mutateArgs = {
         board_update: { agent: 'x', status: 'TODO', title: 't' },
         plutos_create_agent: { name: 'foo-bar', owner: 'x', role: 'y' },
-        agent_register: { name: 'n', owner: 'o', role: 'r' },
         session_start: { ai: 'cursor' },
         session_end: { ai: 'cursor', headline: 'h', did: 'd' }
     };
@@ -618,8 +711,22 @@ try {
         check('the PENDING reply tells the agent not to proceed', /NOT APPROVAL[\s\S]*Do not proceed/.test(pendingText));
         const ticket = (pendingText.match(/ticket=(ask-[0-9a-z]+-[0-9a-z]{6})/) || [])[1];
         check('PENDING carries a resumable ticket id', !!ticket, pendingText.slice(0, 120));
+        check('PENDING tells the agent to relay the question in chat and names the owner\'s CLI command, not the dashboard',
+            /in chat/.test(pendingText) && !/dashboard/i.test(pendingText)
+            // The CLI by its absolute path and the project named: run from any folder, the command finds this ticket.
+            && new RegExp(`node ["'][^"']*cli\\.mjs["'] approve ${ticket} ["'][^"']*asker["']`).test(pendingText)
+            && new RegExp(`node ["'][^"']*cli\\.mjs["'] reject ${ticket} ["'][^"']*asker["']`).test(pendingText), pendingText);
+        {
+            fs.mkdirSync(path.join(askDir, 'docs', 'ai', 'design-picks'), { recursive: true });
+            for (const f of ['a.png', 'b.png']) fs.writeFileSync(path.join(askDir, 'docs', 'ai', 'design-picks', f), 'png');
+            const pick = contentText(await ac.call('plutos_ask', { agent: 'Antigravity', question: 'Which header?', options: ['Dark $(touch pwned)', 'Light'], images: ['docs/ai/design-picks/a.png', 'docs/ai/design-picks/b.png'] }));
+            check('PENDING with options numbers them, answers by number and lists each image by option',
+                /Options: 1\) Dark \$\(touch pwned\); 2\) Light/.test(pick) && /--option 1\n/.test(pick) && /--option 2\n/.test(pick)
+                && /option 1: docs\/ai\/design-picks\/a\.png; option 2: docs\/ai\/design-picks\/b\.png/.test(pick), pick);
+            check('no command line in the PENDING reply carries the AI\'s option text', pick.split('\n').filter(l => / approve | reject /.test(l)).every(l => !l.includes('touch pwned')), pick);
+        }
 
-        check('the question is queued for the dashboard',
+        check('the question is queued for the owner',
             listApprovals(askDir).some(q => q.id === ticket && q.agent === 'Antigravity'));
 
         // The owner answers between two calls — exactly the real sequence.
@@ -643,7 +750,7 @@ try {
         // A tool of the closed admin drawer is refused with how to open it (the drawer's own test
         // covers the rest). A proposal is no parameter of plutos_ask any more: it is ignored, and
         // the question is what the owner sees.
-        const closedAdmin = await ac.call('project_deck', {});
+        const closedAdmin = await ac.call('status_report', {});
         check('an admin-drawer tool is refused, with how to open it, while the drawer is closed',
             isToolError(closedAdmin) && /"admin" drawer/.test(contentText(closedAdmin)), contentText(closedAdmin));
         const noProposal = await ac.call('plutos_ask', { agent: 'Antigravity', question: 'Plain question?', proposal: { kernel: 'Claude Code', casts: [] } });
@@ -678,6 +785,39 @@ try {
     check('retried session_end is idempotent', !isToolError(end2) && /idempotent retry/.test(contentText(end2)));
     const liveSessions = (fs.readFileSync(path.join(idp, 'docs', 'handoff', 'CONTINUITY.md'), 'utf8').match(/^### /gm) || []).length;
     check('one session row after the retry', liveSessions === 1, `found ${liveSessions}`);
+    // An owner's decision is recorded when stated, not only at session_end, and the next brief shows it.
+    const decided = await idc.call('plutos_decide', { decision: 'Release on Fridays only: the owner tests on Thursdays' });
+    check('plutos_decide records the decision with its id', !isToolError(decided) && /Recorded d-[0-9a-f]{12}/.test(contentText(decided)), contentText(decided));
+    // The brief is paged (d-821d5722b32a): part 1 under its cap and a pointer to part 2; a read-only side session is told to report in one results file.
+    const firstPart = contentText(await idc.call('session_start', { ai: 'gemini' }));
+    check('session_start part 1 holds its cap and names part 2', firstPart.length <= 3700 && /`session_start` with \{"part": 2\}/.test(firstPart), String(firstPart.length));
+    const secondPart = contentText(await idc.call('session_start', { ai: 'gemini', part: 2 }));
+    check('session_start part 2 carries the full working agreement', /^WORKING AGREEMENT/.test(secondPart) && /1\. Play back first:/.test(secondPart), secondPart.slice(0, 200));
+    const sideBrief = contentText(await idc.call('session_start', { ai: 'side', readOnly: true }));
+    check('a read-only session_start sends findings to one results file and never to session_end',
+        /docs\/handoff\/results\/` \(YYYY-MM-DD-<topic>\.md\)/.test(sideBrief) && !/End the session with `session_end`/.test(sideBrief), sideBrief.slice(0, 400));
+    const nextBrief = contentText(await idc.call('session_start', { ai: 'gemini' }));
+    check('the next session_start shows the decision under Settled decisions', /## Settled decisions[\s\S]*Release on Fridays only/.test(nextBrief), nextBrief.slice(0, 600));
+    check('an empty plutos_decide is refused', isToolError(await idc.call('plutos_decide', { decision: '  ' })));
+    // Legacy id-less DECISION digest lines (feedback 2026-11-14 §2.5): plutos_decide and session_end
+    // migrate them first, with no terminal, only when there is one, and say how many.
+    const continuityFile = path.join(idp, 'docs', 'handoff', 'CONTINUITY.md');
+    const contextFile = path.join(idp, 'docs', 'handoff', 'CONTEXT.json');
+    const stripIds = (extra) => {
+        let t = fs.readFileSync(continuityFile, 'utf8').replace(/ \(d-[0-9a-f]{12}\)/g, '');
+        if (extra) t = t.replace(/(## Digest[^\n]*\n)/, `$1- DECISION: ${extra}\n`);
+        fs.writeFileSync(continuityFile, t);
+        fs.writeFileSync(contextFile, JSON.stringify({ version: 1, updatedAt: null, claims: [] }, null, 2) + '\n');
+    };
+    stripIds();
+    const legacyDecide = contentText(await idc.call('plutos_decide', { decision: 'Tag every release: rollbacks need a name' }));
+    check('plutos_decide migrates a legacy digest line and reports the count', /Recorded d-[0-9a-f]{12}/.test(legacyDecide) && /Migrated 1 legacy DECISION digest line/.test(legacyDecide), legacyDecide);
+    const quietDecide = contentText(await idc.call('plutos_decide', { decision: 'Keep the changelog short: nobody reads a long one' }));
+    check('plutos_decide says nothing about migration when no legacy line is left', /Recorded/.test(quietDecide) && !/Migrated/.test(quietDecide), quietDecide);
+    stripIds('An old ruling from before ids.');
+    const legacyEnd = contentText(await idc.call('session_end', { ai: 'cursor', headline: 'two', did: 'did more' }));
+    check('session_end migrates legacy digest lines and reports the count', /session recorded/.test(legacyEnd) && /Migrated \d+ legacy DECISION digest line/.test(legacyEnd), legacyEnd);
+    check('after session_end every digest DECISION line carries an id', !/^- DECISION: (?!.*\(d-[0-9a-f]{12}\)).*$/m.test(fs.readFileSync(continuityFile, 'utf8')), fs.readFileSync(continuityFile, 'utf8').slice(0, 800));
     idc.kill();
 } catch (e) {
     failed++;

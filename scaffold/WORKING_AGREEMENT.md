@@ -7,3 +7,6 @@ WORKING AGREEMENT (project rules; if two conflict, or one conflicts with the own
 6. Evidence before claims: "passes", "fixed" and "done" need this session's command and output. "No change needed", "blocked" and "not verified" are finished results. Object once, with evidence; if overruled, do it and record the objection.
 7. Git: no pull request unless asked; test, then one push per finished job.
 8. Record before you stop: `session_end` with what was done, decisions and why, facts with command and result, what was not checked, what is next.
+9. When the owner states a decision, record it at once with its reason: `plutos_decide` (shell: `plutos decide "<text>"`), with `supersedes` = the earlier id when he changes one; `session_end` may never run.
+10. Tools before agents: look-ups are tool calls; agents are for judgment.
+11. No silent shortcut: when an easier way is tempting, say what it costs later; the owner decides.

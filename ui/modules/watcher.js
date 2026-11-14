@@ -1,4 +1,4 @@
-// Watcher panel — the "wire every seat at once" button, on the Board tab where the work is.
+// Watcher section — the "wire every seat at once" button, on the Board page where the work is.
 //
 // The owner's complaint: opening PLUT_OS and then setting up each AI's watcher by hand, every
 // time, for three different tools. Tick the seats, press once.
@@ -33,9 +33,9 @@ export async function fetchWatcher() {
                 </div>
             </div>
             <p class="watch-state">${d.installed
-                ? `<b style="color:var(--status-done);">${t('watcher_on')}</b> ${escHtml(d.scriptPath || '')}`
+                ? `<b class="hook-state is-on">${t('watcher_on')}</b> ${escHtml(d.scriptPath || '')}`
                 : t(d.needsUpgrade ? 'watcher_upgrade_needed' : 'watcher_off')}</p>
-            ${d.error ? `<p class="watch-state" style="color:var(--status-error);">${escHtml(d.error)}</p>` : ''}
+            ${d.error ? `<p class="watch-state is-error">${escHtml(d.error)}</p>` : ''}
             <p class="watch-note">${t('watcher_hint')}</p>`;
     } catch (e) {
         box.innerHTML = `<p class="page-status">${t('conn_error')}</p>`;

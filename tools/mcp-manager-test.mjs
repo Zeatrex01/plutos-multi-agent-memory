@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The MCP list (lib/mcps.mjs, read by the setup tier and the recommendations) and the code drawer,
+// The MCP list (lib/mcps.mjs, read by the setup tier and the recommendations) and the code tools,
 // against temp folders only: a temp HOME
 // stands in for ~/.claude.json, Claude Desktop and the clients Connect an AI writes. What Claude
 // Code itself does with these files was checked with its CLI on 2026-10-28:
@@ -110,7 +110,7 @@ try {
         assert.ok(ignoreLines().includes('.gemini/settings.json'));
     });
 
-    // The code drawer.
+    // The code tools (plutos_code_lookup listed by default; plutos_usage in the admin drawer).
     const CODE = path.join(scratch, 'code');
     write(path.join(CODE, 'lib', 'store.mjs'), "export function saveThing() {}\n");
     write(path.join(CODE, 'lib', 'store-extra.mjs'), "export const extra = 1;\n");
@@ -131,11 +131,11 @@ try {
         assert.doesNotMatch(text, /900K/);
         assert.match(usageSummary(path.join(scratch, 'nowhere')), /No Claude Code session for this project/);
     });
-    check('the code drawer holds both tools and starts closed', () => {
-        const drawer = DRAWERS.find(d => d.id === 'code');
-        assert.deepEqual(drawer.tools.map(t => t.name), CODE_TOOLS.map(t => t.name));
+    check('plutos_usage sits in the closed admin drawer', () => {
+        const drawer = DRAWERS.find(d => d.id === 'admin');
+        assert.ok(drawer.tools.some(t => t.name === 'plutos_usage'));
         assert.match(CODE_TOOLS.find(t => t.name === 'plutos_usage').description, /Claude Code only/);
-        assert.equal(isDrawerOpen(PROJECT, 'code'), false);
+        assert.equal(isDrawerOpen(PROJECT, 'admin'), false);
     });
     console.log(`${checks} MCP manager checks passed.`);
 } finally {

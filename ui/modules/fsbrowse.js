@@ -27,10 +27,10 @@ window.fsBrowse = async function(p) {
         fsParentPath = data.parent;
         syncInstallPath();
         document.getElementById('fs-current').textContent = data.path || 'Drives';
-        const rowStyle = 'padding:0.35rem 0.75rem; cursor:pointer; color:var(--text-body); font-size:0.85rem; border-bottom:1px solid var(--border-subtle); display:flex; align-items:center; gap:0.5rem;';
+        // A folder row is a button: reachable by keyboard, and its hover comes from the stylesheet.
         document.getElementById('fs-list').innerHTML = data.dirs.length
-            ? data.dirs.map(d => `<div style="${rowStyle}" onmouseover="this.style.background='var(--bg-surface)'" onmouseout="this.style.background=''" onclick="fsBrowse(decodeURIComponent('${encodeURIComponent(d.path).replace(/'/g, '%27')}'))">&#128193; ${escHtml(d.name)}</div>`).join('')
-            : `<div style="padding:0.75rem; color:var(--text-muted); font-size:0.85rem;">${t('fs_empty')}</div>`;
+            ? data.dirs.map(d => `<button type="button" class="fs-row" onclick="fsBrowse(decodeURIComponent('${encodeURIComponent(d.path).replace(/'/g, '%27')}'))">${escHtml(d.name)}</button>`).join('')
+            : `<div class="fs-empty">${t('fs_empty')}</div>`;
     } catch(e) {
         showToast(t('conn_error'), true);
     }

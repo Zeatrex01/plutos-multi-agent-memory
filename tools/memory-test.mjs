@@ -14,7 +14,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-memory-'));
 process.env.PLUTOS_HOME = path.join(tmp, 'hub');
 const { recordContextClaims, recordDecisions, normalizeLearned, normalizeDecided, assessContext, ageOutClaims, CONTEXT_LIMITS, contextPathFor, readRegistry } = await import('../lib/context.mjs');
 const { recordSession, buildBrief, parseContinuity, continuityPathFor, digestText, digestId } = await import('../lib/continuity.mjs');
-const { listMemory, openMemory, verifyMemory, supersedeMemory, retireMemory, memoryCheck, renderMemoryCheck, migrateDigestDecisions, nearDuplicates } = await import('../lib/memory.mjs');
+const { listMemory, openMemory, verifyMemory, supersedeMemory, retireMemory, memoryCheck, renderMemoryCheck, migrateDigestDecisions, nearDuplicates, legacyDigestDecisionCount, autoMigrateDigestDecisions, migrationNote } = await import('../lib/memory.mjs');
 const { hygieneReport, BUDGETS, commitsSinceDocChanged } = await import('../lib/hygiene.mjs');
 const { findClaims } = await import('../lib/claims.mjs');
 
@@ -227,9 +227,70 @@ try {
         assert.equal(registry(root).decisions.length, 2);
         assert.ok(!kinds(memoryCheck(root)).has('digest'));
     });
-    check('verify, supersede, retire and --apply need an interactive terminal; list and open do not', () => {
+    // Two clients' session_end can migrate at once (critique seat, 2026-11-14): the line must carry the
+    // id the registry holds, never one minted by the run that lost the race.
+    check('a migration that loses the race to another client annotates with the id the registry holds', () => {
+        const root = project('migrate-race');
+        kit(root);
+        execFileSync('git', ['init', '-q'], { cwd: root });
+        recordSession(root, { ai: 'Gemini', headline: 'old session', decided: ['Keep the port at 4000.'] });
+        const text = fs.readFileSync(continuityPathFor(root), 'utf8').replace(/ \(d-[0-9a-f]{12}\)/g, '');
+        fs.writeFileSync(continuityPathFor(root), text);
+        fs.writeFileSync(contextPathFor(root), JSON.stringify({ version: 1, updatedAt: null, claims: [] }, null, 2) + '\n');
+        let winner = '';
+        const r = migrateDigestDecisions(root, { beforeRecord: () => {
+            winner = recordDecisions(root, normalizeDecided(['Keep the port at 4000.']), { ai: 'other-client', head: '' }).ids[0];
+        } });
+        assert.ok(winner);
+        assert.equal(r.migrated, 0);
+        const ids = registry(root).decisions.map(d => d.id);
+        assert.deepEqual(ids, [winner]);
+        const line = parseContinuity(fs.readFileSync(continuityPathFor(root), 'utf8')).digest.find(l => l.includes('port at 4000'));
+        assert.equal(digestId(line), winner);
+        assert.ok(!kinds(memoryCheck(root)).has('digest'));
+    });
+    // The automatic migration (feedback 2026-11-14 §2.5): plutos_decide, session_end and plutos decide
+    // run it, only when the scan finds an id-less line, and say how many lines it took.
+    const legacy = (name) => {
+        const root = project(name);
+        kit(root);
+        recordSession(root, { ai: 'Gemini', headline: 'old', decided: ['Ship on Fridays.'] });
+        let text = fs.readFileSync(continuityPathFor(root), 'utf8').replace(/ \(d-[0-9a-f]{12}\)/g, '');
+        fs.writeFileSync(continuityPathFor(root), text);
+        fs.writeFileSync(contextPathFor(root), JSON.stringify({ version: 1, updatedAt: null, claims: [] }, null, 2) + '\n');
+        return root;
+    };
+    check('the automatic migration runs only when the scan finds an id-less line, and reports the count', () => {
+        const root = legacy('auto-migrate');
+        assert.equal(legacyDigestDecisionCount(root), 1);
+        const m = autoMigrateDigestDecisions(root);
+        assert.equal(m.migrated, 1);
+        assert.match(migrationNote(m), /^Migrated 1 legacy DECISION digest line\(s\) without an id: 1 new decision record/);
+        assert.equal(legacyDigestDecisionCount(root), 0);
+        const before = fs.readFileSync(continuityPathFor(root), 'utf8');
+        assert.equal(autoMigrateDigestDecisions(root), null, 'nothing to find: no migration');
+        assert.equal(migrationNote(null), '');
+        assert.equal(fs.readFileSync(continuityPathFor(root), 'utf8'), before);
+        assert.equal(autoMigrateDigestDecisions(project('auto-empty')), null, 'no CONTINUITY.md');
+        assert.match(migrationNote({ error: 'boom' }), /not migrated: boom/);
+    });
+    check('plutos decide migrates legacy lines first without a terminal and prints the count; the supersede id then exists', () => {
+        const root = legacy('auto-decide-cli');
+        const run = cli(root, 'decide', 'Ship on Mondays: Friday releases broke weekends.');
+        assert.equal(run.status, 0, run.stderr);
+        assert.match(run.stdout, /Migrated 1 legacy DECISION digest line/);
+        assert.match(run.stdout, /Recorded d-[0-9a-f]{12}/);
+        assert.ok(registry(root).decisions.some(d => d.text === 'Ship on Fridays.' && d.origin === 'digest'));
+        const again = cli(root, 'decide', 'A second ruling.');
+        assert.doesNotMatch(again.stdout, /Migrated/);
+    });
+    check('the memory check names the automatic migration, not --apply alone', () => {
+        const root = legacy('auto-check-text');
+        assert.match(memoryCheck(root).findings.find(f => f.kind === 'digest').text, /the next plutos_decide or session_end gives each a record/);
+    });
+    check('verify, supersede and retire need an interactive terminal; list and open do not', () => {
         kit(decRoot);
-        for (const args of [['memory', 'retire', 'd-000000000000', 'why'], ['memory', 'supersede', 'd-000000000000', 'x'], ['memory', 'verify', 'd-000000000000'], ['check', '--memory', '--apply']]) {
+        for (const args of [['memory', 'retire', 'd-000000000000', 'why'], ['memory', 'supersede', 'd-000000000000', 'x'], ['memory', 'verify', 'd-000000000000']]) {
             const run = cli(decRoot, ...args);
             assert.equal(run.status, 1, args.join(' '));
             assert.match(run.stderr, /interactive terminal/);

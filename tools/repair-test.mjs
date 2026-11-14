@@ -239,11 +239,11 @@ try {
         assert(result.errors.some(error => error.message.includes('Synthetic receipt permissions failure')));
         assert(repair.previewProjectRepair(root).backups.some(backup => backup.backupId === plan.token));
     });
-    await test('only existing watchers upgrade, preserving recovered seat/port and foreign hooks', () => {
+    await test('only existing watchers upgrade, preserving the recovered seat and foreign hooks', () => {
         const root = project('watcher'); legacy(root);
         watcher.setWatcher(root, true, { agent: 'Custom seat', port: 3456 });
         const file = watcher.watcherScriptPath(root);
-        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace("if (watcherProjectKey(board?.projectRoot) !== PROJECT_KEY) process.exit(0);", ''));
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('if (payload.stop_hook_active === true) process.exit(0);', ''));
         const settingsFile = path.join(root, '.claude/settings.local.json');
         const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
         settings.hooks.Stop[0].hooks.push({ type: 'command', command: 'foreign-hook' });
@@ -253,7 +253,7 @@ try {
         assert.equal(repair.applyProjectRepair({ projectRoot: root, token: plan.token }).success, true);
         assert.equal(watcher.watcherStatus(root).installed, true);
         const body = fs.readFileSync(file, 'utf8');
-        assert(body.includes('Custom seat') && body.includes('3456'));
+        assert(body.includes('Custom seat'));
         assert(fs.readFileSync(settingsFile, 'utf8').includes('foreign-hook'));
         assert(!repair.previewProjectRepair(b).changes.some(change => change.path.includes('watcher') || change.path.includes('.claude')));
     });

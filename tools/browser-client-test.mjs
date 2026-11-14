@@ -103,23 +103,8 @@ try {
                 slowest: entries.sort((a, b) => b.duration - a.duration).slice(0, 12).map(item => ({ path: new URL(item.name).pathname, ms: Math.round(item.duration), waitMs: Math.round(item.responseStart - item.requestStart), bytes: item.encodedBodySize })) };
         })
     } }));
-    check('cold startup does not preload hidden catalogs or Graphify', await frame.evaluate(() => !performance.getEntriesByType('resource')
-        .some(item => ['/api/graphify', '/api/deck'].includes(new URL(item.name).pathname))));
-    for (const [view, endpoint] of [['graphify', '/api/graphify']]) {
-        const loaded = page.waitForResponse(response => new URL(response.url()).pathname === endpoint);
-        await frame.evaluate(view => window.switchView(view), view);
-        const response = await loaded;
-        check(`${view} still loads through the actual view router on demand`, response.ok()
-            && await frame.evaluate(view => [view, `view-${view}`].includes(document.querySelector('.view-section.active')?.id), view));
-    }
-    await frame.evaluate(() => window.switchView('board'));
     check('actual local dashboard retains the owned project', await frame.evaluate(expected => window.activeWorkspacePath === expected, root));
     check('outer shell cannot read the local project DOM', await page.evaluate(() => document.querySelector('iframe').contentDocument === null));
-    await frame.evaluate(() => window.switchView('report'));
-    const popupEvent = context.waitForEvent('page'); await frame.locator('#deck-link').click();
-    const popup = await popupEvent; await popup.waitForLoadState('domcontentloaded');
-    check('owner-clicked local Deck still opens in its own tab', new URL(popup.url()).origin === origin && new URL(popup.url()).pathname === '/deck');
-    await popup.close();
     let releasePresence;
     await page.route('**/api/auth/status', async route => {
         await new Promise(resolve => { releasePresence = resolve; });

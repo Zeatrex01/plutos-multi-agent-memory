@@ -45,6 +45,40 @@ try {
             quotes: [{ sourceId: source.id, text: 'a grid,   and sans-serif   typefaces' }] });
         assert.equal(finding.quotes.length, 1);
     });
+    // Each pair below confirmed under the old squash-and-includes check: the quote's words are not the page's.
+    const quoteTopic = store.startTopic(root, { title: 'Quotes', question: 'Which quotes are on the page?', pages: 120, depth: 1 });
+    const quoteBranch = store.addBranch(root, quoteTopic.id, { question: 'Verbatim' });
+    let pageNo = 0;
+    const tryQuote = (quote, markdown) => {
+        const { source: s } = store.addSource(root, quoteTopic.id, page(`https://example.org/q${pageNo++}`, markdown));
+        return () => store.addFinding(root, quoteTopic.id, { branchId: quoteBranch.id, claim: 'c', sourceIds: [s.id], quotes: [{ sourceId: s.id, text: quote }] });
+    };
+    const refused = (quote, markdown, why = /Quote not found/) => assert.throws(tryQuote(quote, markdown), why, `"${quote}" on "${markdown}"`);
+    const accepted = (quote, markdown) => assert.equal(tryQuote(quote, markdown)().quotes.length, 1, `"${quote}" on "${markdown}"`);
+    await check('a quote confirms only on whole words: no partial words or numbers', () => {
+        refused('the rate rose to 5', 'the rate rose to 50% last year');
+        refused('did not say no', 'He did not say nothing at all');
+        refused('The rate rose to 5.', 'The rate rose to 5.5% in May.');
+        refused('the team won', "so the team won't play today");
+        refused('binding on all parties', 'it is non-binding on all parties here');
+        refused('5 degrees below zero', 'it was -5 degrees below zero today');
+        for (const n of ['5 000', "5'000", '5-10', '5/10']) refused('the population was 5', `the population was ${n} people`);
+        accepted('the rate rose to 5', 'the rate rose to 5, then fell');
+        accepted('"the rate rose to 5."', 'Then the rate rose to 5. It fell in June.');
+    });
+    await check('no character that carries meaning is deleted, and case is kept', () => {
+        refused('written in C code', 'it is written in C# code');
+        refused('written in C', 'it was written in C++ by them');
+        refused('The Rate Rose', 'the rate rose to 5, then fell', /Quote not found.*case/s);
+        refused('rose to 51 in May', 'it rose to 5¹ in May');
+        accepted('it rose to 5¹ in May', 'so it rose to 5¹ in May');
+        accepted('written in C# code', 'it is written in C# code');
+    });
+    await check('Markdown formatting on the page does not hide a quote, and a quote in an unspaced script is not checkable', () => {
+        accepted('the grid is the foundation', '## Rules\n\n- the **grid** is the *foundation* of the layout.\n');
+        accepted('the grid layout', 'Read about the [grid layout](https://example.org/g) today.');
+        refused('一个网格', '这是一个网格布局。', /cannot be checked/);
+    });
     await check('a branch closes as answered only with a finding under it', () => {
         const empty = store.addBranch(root, topic.id, { question: 'Colour' });
         assert.throws(() => store.setBranchStatus(root, topic.id, { branchId: empty.id, status: 'answered' }), /answered only once/);

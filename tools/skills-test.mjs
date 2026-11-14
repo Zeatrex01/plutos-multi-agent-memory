@@ -3,7 +3,8 @@
 // module loads (lib/approot.mjs fixes PLUTOS_HOME_DIR at import), so the real registry is never read
 // or written. Covers the list across both homes, the pack registry's refusals, activation and its
 // no-partial-state refusal, the hash-checked deactivation, links, the pack's own measured line, the
-// brief line and the CLI commands.
+// brief line, the CLI commands, a pack's declared MCP servers in the project's .mcp.json, the two
+// packs PLUT_OS ships (packs/) and activePackMcpServers.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,7 +20,8 @@ process.env.PLUTOS_HOME = hub;
 process.env.HOME = process.env.USERPROFILE = home;
 process.env.APPDATA = path.join(home, 'AppData', 'Roaming');
 fs.mkdirSync(process.env.APPDATA, { recursive: true });
-const { SKILL_HOMES, listProjectSkills, scanProjectSkills, registerPack, listPacks, forgetPack, activatePack, deactivatePack, readActivation, parseSkillFrontmatter, skillsBriefLines } = await import('../lib/skills.mjs');
+const { SKILL_HOMES, listProjectSkills, scanProjectSkills, registerPack, listPacks, forgetPack, activatePack, deactivatePack, readActivation, parseSkillFrontmatter, skillsBriefLines, shippedPacks, SHIPPED_PACKS_DIR, activePackMcpServers } = await import('../lib/skills.mjs');
+const { resolvePackMcpEntry, parsePackMcpServers, MCP_CONFIGS, RECOMMENDED_MCPS } = await import('../lib/mcps.mjs');
 const { initTargetProject } = await import('../lib/workspaces.mjs');
 const { buildBrief } = await import('../lib/continuity.mjs');
 
@@ -214,6 +216,257 @@ try {
         assert.match(bad.stderr, /^\[!\] Unknown pack "nope"/);
         assert.equal(cli(tmp, 'pack').status, 1);
         assert.match(cli(tmp, '--help').stdout, /pack on <id> \[path\]/);
+    });
+
+    // A skill added to the pack folder after `pack add` (field report 2026-11-14, amongrooms D3).
+    const growDir = path.join(tmp, 'packs', 'grow-pack');
+    write(path.join(growDir, 'module.json'), JSON.stringify({ id: 'grow-pack', name: 'Grow' }));
+    write(path.join(growDir, 'skills', 'first', 'SKILL.md'), skillMd('first', 'First.'));
+    check('pack list counts the pack folder live; activation writes the inspected skills back to the registry', () => {
+        registerPack(growDir);
+        write(path.join(growDir, 'skills', 'second', 'SKILL.md'), skillMd('second', 'Second.'));
+        write(path.join(growDir, 'skills', 'not-a-skill', 'README.md'), 'no SKILL.md');
+        assert.deepEqual(listPacks().find(p => p.id === 'grow-pack').skills, ['first', 'second']);
+        assert.match(cli(tmp, 'pack', 'list').stdout, /grow-pack · Grow · 2 skill\(s\)/);
+        const stored = () => JSON.parse(fs.readFileSync(path.join(hub, 'packs.json'), 'utf8')).packs['grow-pack'].skills.map(s => s.name);
+        assert.deepEqual(stored(), ['first'], 'the registry still holds the count from pack add');
+        const growTarget = path.join(tmp, 'grow-target');
+        fs.mkdirSync(growTarget, { recursive: true });
+        activatePack(growTarget, 'grow-pack');
+        assert.deepEqual(stored(), ['first', 'second']);
+    });
+
+    check('pack on warns when git ignores a placed skill, not one added with git add -f, and is silent outside a repository', () => {
+        const repo = path.join(tmp, 'ignored-repo');
+        fs.mkdirSync(repo, { recursive: true });
+        if (spawnSync('git', ['init', '-q'], { cwd: repo }).status !== 0) { console.log('  (git not available; skipped)'); return; }
+        fs.writeFileSync(path.join(repo, '.gitignore'), '.agents/\n');
+        const first = activatePack(repo, 'grow-pack');
+        const warning = first.notes.find(n => /^git ignores /.test(n));
+        assert.ok(warning, first.notes.join(' | '));
+        assert.match(warning, /\.agents\/skills\/first, \.agents\/skills\/second/);
+        assert.ok(!/\.claude\/skills/.test(warning), warning);
+        // Every recorded placement is checked, not only this run's copies.
+        assert.ok(activatePack(repo, 'grow-pack').notes.some(n => /^git ignores /.test(n)), 'a second run still warns');
+        assert.equal(spawnSync('git', ['add', '-f', '.agents/skills'], { cwd: repo }).status, 0);
+        assert.ok(!activatePack(repo, 'grow-pack').notes.some(n => /^git ignores /.test(n)), 'files added with git add -f are not flagged');
+        const plain = path.join(tmp, 'grow-target');
+        assert.ok(!activatePack(plain, 'grow-pack').notes.some(n => /^git ignores /.test(n)), 'no warning outside a repository');
+    });
+
+    // A pack's declared MCP servers (owner decision d-9ca58ad53503): project .mcp.json only.
+    const mcpPack = path.join(tmp, 'packs', 'mcp-pack');
+    const mcpDecl = {
+        tool: { command: 'python3', args: ['-m', 'tool_server'], env: { MODE: 'pack' }, os: { win32: { command: 'python' } } },
+        other: { command: 'npx', args: ['-y', 'other-server'] }
+    };
+    write(path.join(mcpPack, 'skills.json'), JSON.stringify({ version: 1, id: 'mcp-pack', name: 'MCP pack', skills: [], mcpServers: mcpDecl }));
+    write(path.join(mcpPack, 'skills', 'uses-tool', 'SKILL.md'), skillMd('uses-tool', 'Calls the tool server.'));
+    const readMcp = root => JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8'));
+    check('registerPack refuses a malformed mcpServers declaration and lists the declared names', () => {
+        const bad = path.join(tmp, 'packs', 'bad-mcp');
+        write(path.join(bad, 'skills', 's', 'SKILL.md'), skillMd('s', 'd'));
+        for (const servers of [{ 'bad name': { command: 'x' } }, { x: { args: ['a'] } }, { x: { command: 'x', args: 'a' } }, { x: { command: 'x', os: { plan9: { command: 'y' } } } }, ['x']]) {
+            write(path.join(bad, 'skills.json'), JSON.stringify({ version: 1, id: 'bad-mcp', name: 'Bad', mcpServers: servers }));
+            assert.throws(() => registerPack(bad), /mcpServers/, JSON.stringify(servers));
+        }
+        assert.deepEqual(registerPack(mcpPack).mcpServers, ['tool', 'other']);
+    });
+
+    const mcpProject = path.join(tmp, 'mcp-project');
+    fs.mkdirSync(mcpProject, { recursive: true });
+    const realHome = path.join(home, '.claude.json');
+    check('pack on adds the declared servers to the project .mcp.json, resolved for this OS, and records them; no home config is written', () => {
+        write(path.join(mcpProject, '.mcp.json'), JSON.stringify({ mcpServers: { plutos: { command: 'node', args: ['.plutos/plutos-launch.mjs'] } } }));
+        const r = activatePack(mcpProject, 'mcp-pack');
+        assert.deepEqual(r.mcp, { added: ['tool', 'other'], conflicts: [] });
+        const cfg = readMcp(mcpProject);
+        assert.deepEqual(Object.keys(cfg.mcpServers), ['plutos', 'tool', 'other']);
+        assert.equal(cfg.mcpServers.tool.command, process.platform === 'win32' ? 'python' : 'python3');
+        assert.deepEqual(cfg.mcpServers.tool.args, ['-m', 'tool_server']);
+        assert.equal(cfg.mcpServers.tool.os, undefined, 'the per-OS table is not written');
+        const rec = readActivation(mcpProject).active['mcp-pack'].mcp;
+        assert.deepEqual(Object.keys(rec.servers), ['tool', 'other']);
+        assert.equal(rec.created, false);
+        assert.ok(r.notes.some(n => /Added to \.mcp\.json: tool, other/.test(n)), r.notes.join(' | '));
+        assert.ok(r.notes.some(n => /mcpServers\.tool holds the .* command/.test(n)), 'the per-OS entry is flagged');
+        assert.ok(!fs.existsSync(realHome), 'no ~/.claude.json was written');
+        // A second run changes nothing.
+        const again = activatePack(mcpProject, 'mcp-pack');
+        assert.deepEqual(again.mcp, { added: [], conflicts: [] });
+        assert.deepEqual(readMcp(mcpProject), cfg);
+    });
+
+    check('the per-OS command: win32 and linux resolve differently', () => {
+        const decl = parsePackMcpServers(mcpDecl).tool;
+        assert.equal(resolvePackMcpEntry(decl, 'win32').command, 'python');
+        assert.equal(resolvePackMcpEntry(decl, 'linux').command, 'python3');
+        assert.deepEqual(resolvePackMcpEntry(decl, 'darwin').env, { MODE: 'pack' });
+    });
+
+    check('pack off removes only unchanged entries it added; an edited one stays with a note; the owner\'s own stays', () => {
+        const cfg = readMcp(mcpProject);
+        cfg.mcpServers.other.args = ['-y', 'other-server', '--edited'];
+        fs.writeFileSync(path.join(mcpProject, '.mcp.json'), JSON.stringify(cfg, null, 4));
+        const r = deactivatePack(mcpProject, 'mcp-pack');
+        assert.deepEqual(r.mcp, { removed: ['tool'], kept: ['other'] });
+        assert.ok(r.kept.includes('.mcp.json:other'));
+        assert.ok(r.notes.some(n => /other changed since pack on and stayed/.test(n)), r.notes.join(' | '));
+        assert.deepEqual(Object.keys(readMcp(mcpProject).mcpServers), ['plutos', 'other']);
+        assert.equal(readActivation(mcpProject).active['mcp-pack'], undefined);
+    });
+
+    check('pack on never overwrites an entry of the same name it did not add: a conflict is reported', () => {
+        // `other` is now the owner's (the record was dropped at pack off).
+        const r = activatePack(mcpProject, 'mcp-pack');
+        assert.deepEqual(r.mcp, { added: ['tool'], conflicts: ['other'] });
+        assert.ok(r.notes.some(n => /already has other, not added by the pack "mcp-pack"/.test(n)), r.notes.join(' | '));
+        assert.deepEqual(readMcp(mcpProject).mcpServers.other.args, ['-y', 'other-server', '--edited']);
+        assert.deepEqual(Object.keys(readActivation(mcpProject).active['mcp-pack'].mcp.servers), ['tool']);
+        const off = deactivatePack(mcpProject, 'mcp-pack');
+        assert.deepEqual(off.mcp, { removed: ['tool'], kept: [] });
+        assert.deepEqual(Object.keys(readMcp(mcpProject).mcpServers), ['plutos', 'other'], 'the conflicting entry survives pack off');
+    });
+
+    check('a .mcp.json that is not JSON refuses pack on before any skill is placed', () => {
+        const broken = path.join(tmp, 'mcp-broken');
+        write(path.join(broken, '.mcp.json'), '{ not json');
+        assert.throws(() => activatePack(broken, 'mcp-pack'), /\.mcp\.json is not valid JSON/);
+        assert.ok(!fs.existsSync(path.join(broken, '.claude', 'skills')), 'nothing was placed');
+        assert.ok(!fs.existsSync(path.join(broken, '.plutos', 'packs.json')));
+    });
+
+    check('a .mcp.json the pack created goes again at pack off when nothing else is left in it', () => {
+        const fresh = path.join(tmp, 'mcp-fresh');
+        fs.mkdirSync(fresh, { recursive: true });
+        activatePack(fresh, 'mcp-pack');
+        assert.equal(readActivation(fresh).active['mcp-pack'].mcp.created, true);
+        assert.deepEqual(deactivatePack(fresh, 'mcp-pack').mcp.removed, ['tool', 'other']);
+        assert.ok(!fs.existsSync(path.join(fresh, '.mcp.json')));
+    });
+
+    check('pack on again does not put back a pack entry the owner removed from .mcp.json; it is forgotten', () => {
+        const proj = path.join(tmp, 'mcp-owner-removed');
+        fs.mkdirSync(proj, { recursive: true });
+        activatePack(proj, 'mcp-pack');
+        const cfg = readMcp(proj);
+        delete cfg.mcpServers.tool;
+        fs.writeFileSync(path.join(proj, '.mcp.json'), JSON.stringify(cfg, null, 2));
+        const r = activatePack(proj, 'mcp-pack');
+        assert.deepEqual(r.mcp, { added: [], conflicts: [] });
+        assert.deepEqual(Object.keys(readMcp(proj).mcpServers), ['other'], 'tool is not written again');
+        assert.ok(r.notes.some(n => /no longer has tool/.test(n)), r.notes.join(' | '));
+        assert.deepEqual(Object.keys(readActivation(proj).active['mcp-pack'].mcp.servers), ['other']);
+        // pack off, then pack on, brings it back.
+        deactivatePack(proj, 'mcp-pack');
+        assert.deepEqual(activatePack(proj, 'mcp-pack').mcp.added, ['tool', 'other']);
+    });
+
+    check('pack off with an unreadable .mcp.json keeps the record of the pack\'s entries, so a later pack off removes them', () => {
+        const proj = path.join(tmp, 'mcp-unreadable');
+        fs.mkdirSync(proj, { recursive: true });
+        activatePack(proj, 'mcp-pack');
+        const good = fs.readFileSync(path.join(proj, '.mcp.json'), 'utf8');
+        fs.writeFileSync(path.join(proj, '.mcp.json'), '{ half written');
+        const r = deactivatePack(proj, 'mcp-pack');
+        assert.deepEqual(r.mcp.removed, []);
+        assert.ok(r.notes.some(n => /stays on record/.test(n)), r.notes.join(' | '));
+        const kept = readActivation(proj).active['mcp-pack'];
+        assert.deepEqual(Object.keys(kept.mcp.servers), ['tool', 'other']);
+        assert.deepEqual(kept.placed, {}, 'the skills it removed are no longer recorded');
+        fs.writeFileSync(path.join(proj, '.mcp.json'), good);
+        assert.deepEqual(deactivatePack(proj, 'mcp-pack').mcp.removed, ['tool', 'other']);
+        assert.equal(readActivation(proj).active['mcp-pack'], undefined);
+    });
+
+    // The packs PLUT_OS ships (packs/): upstream servers run with npx, one skill each, no upstream code.
+    check('PLUT_OS ships codebase-memory and context-mode; each declares the MCP_CONFIGS command, Windows through cmd /c, and links upstream', () => {
+        assert.equal(SHIPPED_PACKS_DIR, path.join(ROOT, 'packs'));
+        assert.deepEqual(shippedPacks(), ['codebase-memory', 'context-mode']);
+        for (const [id, server] of [['codebase-memory', 'codebase-memory-mcp'], ['context-mode', 'context-mode']]) {
+            const record = JSON.parse(fs.readFileSync(path.join(ROOT, 'packs', id, 'skills.json'), 'utf8'));
+            const decl = parsePackMcpServers(record.mcpServers)[server];
+            assert.ok(decl, `${id} declares ${server}`);
+            for (const platform of ['linux', 'darwin']) assert.deepEqual(resolvePackMcpEntry(decl, platform), MCP_CONFIGS[server], `${id} on ${platform}`);
+            assert.deepEqual(resolvePackMcpEntry(decl, 'win32'), { command: 'cmd', args: ['/c', MCP_CONFIGS[server].command, ...MCP_CONFIGS[server].args] });
+            assert.ok(decl.purpose, `${id} gives a purpose`);
+            const skill = fs.readFileSync(path.join(ROOT, 'packs', id, 'skills', id, 'SKILL.md'), 'utf8');
+            assert.equal(parseSkillFrontmatter(skill).name, id);
+            assert.ok(skill.includes(record.homepage) && record.homepage.startsWith('https://github.com/'), `${id} links upstream`);
+            const shipped = fs.readdirSync(path.join(ROOT, 'packs', id), { recursive: true }).filter(f => fs.statSync(path.join(ROOT, 'packs', id, f)).isFile());
+            assert.deepEqual(shipped.map(f => f.split(path.sep).join('/')).sort(), ['skills.json', `skills/${id}/SKILL.md`], `${id} holds no upstream code`);
+        }
+        assert.ok(/session_start/.test(fs.readFileSync(path.join(ROOT, 'packs', 'context-mode', 'skills', 'context-mode', 'SKILL.md'), 'utf8')));
+    });
+
+    check('the recommended MCP cards name the pack that declares their server', () => {
+        const withPack = RECOMMENDED_MCPS.filter(m => m.pack);
+        assert.deepEqual(withPack.map(m => m.pack).sort(), ['codebase-memory', 'context-mode']);
+        for (const m of withPack) {
+            const record = JSON.parse(fs.readFileSync(path.join(ROOT, 'packs', m.pack, 'skills.json'), 'utf8'));
+            assert.ok(Object.hasOwn(record.mcpServers, m.id), `${m.pack} declares ${m.id}`);
+            assert.deepEqual(m.config, MCP_CONFIGS[m.id], 'the dashboard install path keeps its config');
+        }
+    });
+
+    check('pack add takes a shipped pack by id without a path; an unknown bare id names the shipped ones', () => {
+        const r = registerPack('codebase-memory');
+        assert.equal(r.id, 'codebase-memory');
+        assert.equal(r.path, fs.realpathSync(path.join(ROOT, 'packs', 'codebase-memory')));
+        assert.deepEqual(r.mcpServers, ['codebase-memory-mcp']);
+        assert.throws(() => registerPack('no-such-pack'), /not found: no-such-pack\. PLUT_OS ships codebase-memory, context-mode/);
+        const out = cli(tmp, 'pack', 'add', 'context-mode');
+        assert.equal(out.status, 0, out.stderr);
+        assert.match(out.stdout, /Registered "Context Mode" \(context-mode\)/);
+    });
+
+    check('a folder of the same name in the working folder wins over the shipped pack', () => {
+        const here = path.join(tmp, 'cwd-test');
+        write(path.join(here, 'context-mode', 'skills.json'), JSON.stringify({ version: 1, id: 'local-context', name: 'Local' }));
+        write(path.join(here, 'context-mode', 'skills', 'x', 'SKILL.md'), skillMd('x', 'local'));
+        const out = cli(here, 'pack', 'add', 'context-mode');
+        assert.equal(out.status, 0, out.stderr);
+        assert.match(out.stdout, /\(local-context\)/);
+        forgetPack('local-context');
+    });
+
+    check('a folder of the same name that is not a pack (an upstream clone) does not hide the shipped pack', () => {
+        const here = path.join(tmp, 'cwd-clone');
+        write(path.join(here, 'context-mode', 'README.md'), '# upstream clone\n');
+        const out = cli(here, 'pack', 'add', 'context-mode');
+        assert.equal(out.status, 0, out.stderr);
+        assert.match(out.stdout, /Registered "Context Mode" \(context-mode\)/);
+        assert.equal(listPacks().find(p => p.id === 'context-mode')?.path, fs.realpathSync(path.join(ROOT, 'packs', 'context-mode')));
+    });
+
+    check('a purpose must be a short string and never reaches .mcp.json', () => {
+        assert.throws(() => parsePackMcpServers({ x: { command: 'x', purpose: 3 } }), /purpose/);
+        assert.throws(() => parsePackMcpServers({ x: { command: 'x', purpose: 'p'.repeat(201) } }), /purpose/);
+        assert.equal(resolvePackMcpEntry(parsePackMcpServers({ x: { command: 'x', purpose: 'why' } }).x).purpose, undefined);
+    });
+
+    check('activePackMcpServers lists each active pack\'s server still in .mcp.json, with its purpose; [] otherwise', () => {
+        assert.deepEqual(activePackMcpServers(''), []);
+        const proj = path.join(tmp, 'served');
+        fs.mkdirSync(proj, { recursive: true });
+        assert.deepEqual(activePackMcpServers(proj), [], 'no pack active');
+        registerPack('codebase-memory');
+        activatePack(proj, 'codebase-memory');
+        activatePack(proj, 'mcp-pack');
+        const list = activePackMcpServers(proj);
+        assert.deepEqual(list.map(s => [s.pack, s.server]), [['codebase-memory', 'codebase-memory-mcp'], ['mcp-pack', 'other'], ['mcp-pack', 'tool']]);
+        assert.match(list[0].purpose, /callers/);
+        assert.equal(list[0].name, 'codebase-memory-mcp');
+        assert.equal(list[0].description, list[0].purpose);
+        assert.equal(list[1].purpose, '', 'a server without a purpose');
+        const cfg = readMcp(proj);
+        delete cfg.mcpServers.tool;
+        fs.writeFileSync(path.join(proj, '.mcp.json'), JSON.stringify(cfg));
+        assert.deepEqual(activePackMcpServers(proj).map(s => s.server), ['codebase-memory-mcp', 'other'], 'a server removed from .mcp.json is not offered');
+        fs.writeFileSync(path.join(proj, '.mcp.json'), '{ broken');
+        assert.equal(activePackMcpServers(proj).length, 3, 'an unreadable .mcp.json hides nothing');
+        fs.rmSync(path.join(proj, '.mcp.json'));
+        assert.deepEqual(activePackMcpServers(proj), [], 'no .mcp.json, no server');
     });
 } finally {
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

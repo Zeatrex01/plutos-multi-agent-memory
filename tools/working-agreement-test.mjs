@@ -34,6 +34,25 @@ try {
         assert.match(text, /Reply in Turkish[\s\S]*Scope before features \(project-scissors/);
         assert.equal(fs.readFileSync(path.join(home, AGREEMENT_FILE), 'utf8'), 'WORKING AGREEMENT\n1. Reply in Turkish.\n');
     });
+    check("the rule to record an owner's decision when stated rides in every brief, also under an owner's older copy", () => {
+        fs.writeFileSync(path.join(home, AGREEMENT_FILE), 'WORKING AGREEMENT\n1. Reply in Turkish.\n');
+        assert.match(workingAgreement(home, ROOT), /Reply in Turkish[\s\S]*the owner states a decision[^\n]*plutos_decide/);
+        fs.rmSync(path.join(home, AGREEMENT_FILE));
+        assert.match(workingAgreement(home, ROOT), /the owner states a decision[^\n]*plutos_decide/);
+    });
+    check('"tools before agents" and "no silent shortcut" are shipped and ride in every brief, also under an owner\'s older copy', () => {
+        assert.match(workingAgreement(home, ROOT), /Tools before agents: look-ups are tool calls; agents are for judgment\./);
+        assert.match(workingAgreement(home, ROOT), /No silent shortcut: when an easier way is tempting, say what it costs later; the owner decides\./);
+        fs.writeFileSync(path.join(home, AGREEMENT_FILE), 'WORKING AGREEMENT\n1. Reply in Turkish.\n');
+        const text = workingAgreement(home, ROOT);
+        assert.match(text, /Reply in Turkish[\s\S]*\d+\. Tools before agents[\s\S]*\d+\. No silent shortcut/);
+        assert.equal(fs.readFileSync(path.join(home, AGREEMENT_FILE), 'utf8'), 'WORKING AGREEMENT\n1. Reply in Turkish.\n');
+        fs.writeFileSync(path.join(home, AGREEMENT_FILE), 'WORKING AGREEMENT\n1. Tools before agents, always.\n2. No silent shortcut, ever.\n');
+        const own = workingAgreement(home, ROOT);
+        assert.equal(own.match(/Tools before agents/g).length, 1, 'an owner copy that has the rule is not given it twice');
+        assert.equal(own.match(/No silent shortcut/g).length, 1);
+        fs.rmSync(path.join(home, AGREEMENT_FILE));
+    });
     check('an empty owner copy falls back to the shipped one instead of silencing the rules', () => {
         fs.writeFileSync(path.join(home, AGREEMENT_FILE), '  \n');
         assert.match(workingAgreement(home, ROOT), /Ask again only before/);

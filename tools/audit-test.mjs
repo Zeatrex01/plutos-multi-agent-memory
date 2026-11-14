@@ -24,7 +24,7 @@ process.env.HOME = process.env.USERPROFILE = path.join(tmp, 'user-home');
 process.env.APPDATA = path.join(tmp, 'user-home', 'AppData', 'Roaming');
 fs.mkdirSync(process.env.APPDATA, { recursive: true });
 for (const k of ['PLUTOS_DEV', 'PLUTOS_PROJECT_ROOT', 'CLAUDE_PROJECT_DIR']) delete process.env[k];
-const { initTargetProject, PAST_KIT_RULES, planKitRefresh, pastPointers } = await import('../lib/workspaces.mjs');
+const { initTargetProject, PAST_KIT_RULES, planKitRefresh, pastPointers, SHARED_STATE, MACHINE_IGNORES } = await import('../lib/workspaces.mjs');
 const { auditProject, cleanLeftovers, AUDIT_SECTIONS, AUDIT_LIMIT } = await import('../lib/audit.mjs');
 const { acceptClaims, findClaims } = await import('../lib/claims.mjs');
 
@@ -151,6 +151,24 @@ try {
         assert.equal(r.sections.leftovers.length, AUDIT_LIMIT);
         assert.equal(r.omitted.leftovers.leftover, 5);
         assert.equal(r.facts.certainLeftovers, AUDIT_LIMIT + 5);
+    });
+
+    test('shared .plutos/ state is never a machine ignore line, and one git does not hold is a finding', () => {
+        assert.deepEqual(SHARED_STATE, ['.plutos/drawers.json', '.plutos/packs.json', '.plutos/checks.json', '.plutos/claims-baseline.json']);
+        for (const relative of SHARED_STATE) assert.ok(!MACHINE_IGNORES.some(e => e === relative || relative.startsWith(e)), relative);
+        const root = kitProject('shared');
+        write(root, '.plutos/drawers.json', '{"open":["code"],"closed":[]}\n');
+        const untracked = auditProject(root).sections.setup.find(f => f.kind === 'shared-untracked');
+        assert.equal(untracked?.path, '.plutos/drawers.json');
+        assert.equal(untracked.severity, 'medium');
+        assert.doesNotMatch(untracked.message, /ignore line/);
+        commit(root, 'drawers');
+        assert.ok(!auditProject(root).sections.setup.some(f => f.kind === 'shared-untracked'), 'a committed one is no finding');
+        write(root, '.plutos/packs.json', '{"active":{}}\n');
+        fs.appendFileSync(path.join(root, '.gitignore'), '\n.plutos/packs.json\n');
+        const ignored = auditProject(root).sections.setup.filter(f => f.kind === 'shared-untracked');
+        assert.deepEqual(ignored.map(f => f.path), ['.plutos/packs.json']);
+        assert.match(ignored[0].message, /a \.gitignore line excludes it/);
     });
 
     test('--clean without an interactive terminal refuses and moves nothing', () => {

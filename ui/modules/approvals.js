@@ -1,18 +1,14 @@
-// Pending questions — the owner's half of plutos_ask.
+// Pending questions: the owner's half of plutos_ask. They are Home's focal block (#home-waiting):
+// an unanswered question is an agent sitting idle, so it is the first thing Home shows. On every
+// other page only a count rides on the Home nav item; nothing covers the page being read.
 //
-// Why this is a global banner and not a card in the Board pane: an unanswered question is an
-// agent sitting idle, burning nothing but wall-clock. Everything else in this dashboard is
-// something you go and look at; this is the one thing that has to come and find you, on
-// whatever tab you happen to be on.
-//
-// It rides the same 5s cadence the activity strip established. Two things it is careful about,
-// both learned there: re-render only when the set of questions actually changes (otherwise the
-// note you are typing gets ripped out from under you every five seconds), and update the
-// countdown by writing text into the existing node rather than rebuilding the card.
+// It polls every 5s, and it is careful about two things: re-render only when the set of questions
+// actually changes (otherwise the note you are typing is ripped out every five seconds), and move
+// the countdown by writing text into the existing node rather than rebuilding the card.
 import { t } from '../i18n.js';
 import { showToast } from './toast.js';
 import { escHtml, jsArg } from '../esc.js';
-import { returnProjectKey } from './return-summary.js';
+import { returnProjectKey } from './project-key.js';
 
 const POLL_MS = 5000;
 let timer = null;
@@ -36,7 +32,7 @@ function card(q, projectRoot) {
     const approvable = q.approvableHere !== false;
     return `<div class="ask-card" data-ask-id="${escHtml(q.id)}" data-ask-project-root="${escHtml(projectRoot)}">
         <div class="ask-head">
-            <span class="ask-who"><i data-lucide="hand" style="width:13px;height:13px;"></i>${escHtml(q.agent)}</span>
+            <span class="ask-who">${escHtml(q.agent)}</span>
             <span class="ask-ttl" data-ask-ttl="${escHtml(q.id)}">${t('approval_expires')} ${countdown(q.expiresAt)}</span>
         </div>
         <div class="ask-q">${escHtml(q.question)}</div>
@@ -47,31 +43,47 @@ function card(q, projectRoot) {
             return `<a class="ask-image" href="${escHtml(url)}" target="_blank" rel="noopener"><span>${escHtml(label)}</span><img src="${escHtml(url)}" alt="${escHtml(label)}" loading="lazy"></a>`;
         }).join('')}</div>` : ''}
         <input class="field-input field-sm ask-note" id="ask-note-${escHtml(q.id)}" type="text"
-               placeholder="${t('approval_note_ph')}" autocomplete="off">
+               placeholder="${escHtml(t('approval_note_ph'))}" autocomplete="off">
         ${approvable ? '' : `<div class="ask-desk-only">${t('approval_desk_only')}</div>`}
         ${approvable && (q.options || []).length ? `<div class="ask-pick">${t('approval_pick')}</div><div class="ask-options">${q.options.map(o =>
             `<button class="ask-btn ask-opt" onclick="answerAsk(${escHtml(jsArg(q.id))}, 'approved', ${escHtml(jsArg(o))}, ${escHtml(jsArg(projectRoot))})">${escHtml(o)}</button>`
         ).join('')}</div>` : ''}
         <div class="ask-actions">
             ${!approvable || (q.options || []).length ? '' : `<button class="ask-btn ask-yes" onclick="answerAsk(${escHtml(jsArg(q.id))}, 'approved', undefined, ${escHtml(jsArg(projectRoot))})">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>${t('approval_approve')}
+                ${t('approval_approve')}
             </button>`}
             <button class="ask-btn ask-no" onclick="answerAsk(${escHtml(jsArg(q.id))}, 'rejected', undefined, ${escHtml(jsArg(projectRoot))})">
-                <i data-lucide="x" style="width:14px;height:14px;"></i>${t('approval_reject')}
+                ${t('approval_reject')}
             </button>
         </div>
     </div>`;
 }
 
-function host() {
-    let el = document.getElementById('ask-dock');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'ask-dock';
-        el.className = 'ask-dock';
-        document.body.appendChild(el);
-    }
-    return el;
+// Home's container. It sits in the page whether Home is open or not, so the cards are ready the
+// moment Home is; null only before the page markup exists.
+const host = () => document.getElementById('home-waiting');
+
+function paint(pending, projectRoot) {
+    const el = host();
+    if (el) el.innerHTML = pending.length
+        ? pending.map(question => card(question, projectRoot)).join('')
+        : `<p class="home-waiting-none">${t('home_waiting_none')}</p>`;
+    showCount(pending.length);
+}
+
+// The count on the Home nav item (sidebar and phone bar), so a question reaches the owner on any page.
+function showCount(n) {
+    document.querySelectorAll(`.tab-btn[onclick*="'overview'"], .mob-tab-btn[data-mob-view="overview"]`).forEach(btn => {
+        let badge = btn.querySelector('.nav-count');
+        if (!n) { badge?.remove(); return; }
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'nav-count';
+            btn.appendChild(badge);
+        }
+        badge.textContent = String(n);
+        badge.title = t('home_waiting_count').replace('{n}', n);
+    });
 }
 
 window.answerAsk = async function(id, decision, option, expectedProject) {
@@ -79,7 +91,7 @@ window.answerAsk = async function(id, decision, option, expectedProject) {
     const projectRoot = el?.dataset.askProjectRoot;
     // A delayed click from an old card must not answer a copied ticket in a new project.
     if (!returnProjectKey(projectRoot) || (expectedProject && returnProjectKey(expectedProject) !== returnProjectKey(projectRoot))) {
-        showToast(t('return_summary_outdated'), true); return;
+        showToast(t('approval_outdated'), true); return;
     }
     const input = document.getElementById(`ask-note-${id}`);
     const note = input ? input.value : '';
@@ -107,15 +119,18 @@ async function tick(expectedProject = window.activeWorkspacePath) {
     const active = returnProjectKey(window.activeWorkspacePath);
     if (!project || !active) {
         ++requestGeneration;
-        const dock = document.getElementById('ask-dock');
-        if (dock) dock.innerHTML = '';
+        const el = host();
+        if (el) el.innerHTML = '';
+        showCount(0);
         lastIds = ''; lastProject = '';
         return false;
     }
     if (project !== active) return false;
     const generation = ++requestGeneration;
     if (lastProject && project !== lastProject) {
-        host().innerHTML = '';
+        const el = host();
+        if (el) el.innerHTML = '';
+        showCount(0);
         lastIds = ''; lastProject = '';
     }
     let pending, projectRoot;
@@ -141,9 +156,14 @@ async function tick(expectedProject = window.activeWorkspacePath) {
     }
     lastIds = ids;
     lastProject = project;
-    host().innerHTML = pending.map(question => card(question, projectRoot)).join('');
-    if (window.lucide) lucide.createIcons();
+    paint(pending, projectRoot);
     return true;
+}
+
+// Home calls this on open so the block is current at once, not up to five seconds later. An
+// unchanged set keeps its cards, and with them a note the owner had started.
+export function refreshApprovals() {
+    return tick();
 }
 
 export function startApprovalWatch() {
@@ -152,12 +172,3 @@ export function startApprovalWatch() {
     timer = setInterval(() => { if (!document.hidden) tick(); }, POLL_MS);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 }
-
-window.focusApproval = async function(id, projectRoot) {
-    if (!returnProjectKey(projectRoot) || !await tick(projectRoot)) { showToast(t('return_summary_outdated'), true); return; }
-    const card = [...document.querySelectorAll('.ask-card')].find(el => el.dataset.askId === id
-        && returnProjectKey(el.dataset.askProjectRoot) === returnProjectKey(projectRoot));
-    if (!card) { showToast(t('return_summary_outdated'), true); return; }
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    card.querySelector('input, button')?.focus();
-};

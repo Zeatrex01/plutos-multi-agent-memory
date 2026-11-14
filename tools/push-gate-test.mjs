@@ -36,6 +36,17 @@ try {
         const r = hook(repo, 'git push -u origin main');
         assert.equal(r.status, 2);
         assert.match(r.why, /no passing test run/);
+        assert.match(r.why, /own checks[\s\S]*run "<tests> && <its own check>"/);
+    });
+    check('a project\'s own check chained into the recorded command is enforced: it failing records no pass', () => {
+        const own = path.join(scratch, 'own-check');
+        fs.mkdirSync(own);
+        sh(own, 'init', '-q', '-b', 'main');
+        commit(own, 'o.txt', 'o');
+        assert.equal(runTests(own, `${pass} && ${fail}`), 1);
+        assert.equal(hook(own, 'git push').status, 2);
+        assert.equal(runTests(own, `${pass} && ${pass}`), 0);
+        assert.equal(hook(own, 'git push').status, 0);
     });
     check('the refusal names this install\'s recorder, and that command, run as written, lets the push go', () => {
         // Only `run` records a pass, so a project's own test command records nothing (finding B3).
@@ -216,6 +227,50 @@ try {
         fs.writeFileSync(hookFile, '#!/bin/sh\nexit 0\n');
         assert.equal(spawnSync(process.execPath, [gate, 'git-install', work], { env }).status, 1);
         assert.equal(fs.readFileSync(hookFile, 'utf8'), '#!/bin/sh\nexit 0\n');
+    });
+    check('declared checks in .plutos/checks.json run after the tests; a failing one holds the pass and the refusal names it with its meaning', () => {
+        const proj = path.join(scratch, 'declared');
+        fs.mkdirSync(path.join(proj, '.plutos'), { recursive: true });
+        sh(proj, 'init', '-q', '-b', 'main');
+        const declare = list => fs.writeFileSync(path.join(proj, '.plutos', 'checks.json'), JSON.stringify(list));
+        declare([{ name: 'lint', command: pass, meaning: 'style' }, { name: 'arch', command: fail, meaning: 'a call by name in a string was added' }]);
+        commit(proj, 'd.txt', 'd');
+        assert.equal(runTests(proj, pass), 1);
+        const r = hook(proj, 'git push');
+        assert.equal(r.status, 2);
+        assert.match(r.why, /failed these declared checks[\s\S]*arch: a call by name in a string was added/);
+        assert.doesNotMatch(r.why, /lint/);
+        // The record lives in the git dir, so it is never committed.
+        assert.equal(sh(proj, 'status', '--porcelain', '--untracked-files=all'), '');
+        // Tests failing: the checks are not run, and nothing passes.
+        assert.equal(runTests(proj, fail), 1);
+        assert.equal(hook(proj, 'git push').status, 2);
+        // Every check passing: the pass covers them, and the push goes.
+        declare([{ name: 'lint', command: pass, meaning: 'style' }, { name: 'arch', command: pass }]);
+        commit(proj, '.plutos/checks.json', fs.readFileSync(path.join(proj, '.plutos', 'checks.json'), 'utf8'));
+        assert.equal(runTests(proj, pass), 0);
+        assert.equal(hook(proj, 'git push').status, 0);
+        // A checks file that is not a list of checks records no pass: a check must not silently stop running.
+        fs.writeFileSync(path.join(proj, '.plutos', 'checks.json'), '{ "name": "lint" }');
+        commit(proj, '.plutos/checks.json', '{ "name": "lint" }');
+        assert.equal(runTests(proj, pass), 1);
+        assert.match(hook(proj, 'git push').why, /could not read the declared checks: .plutos\/checks\.json must be a list/);
+    });
+    check('a checks.json new or changed since the last run is shown with its commands, in the run and in the refusal', () => {
+        const proj = path.join(scratch, 'declared-trust');
+        fs.mkdirSync(path.join(proj, '.plutos'), { recursive: true });
+        sh(proj, 'init', '-q', '-b', 'main');
+        commit(proj, '.plutos/checks.json', JSON.stringify([{ name: 'lint', command: pass, meaning: 'style' }]));
+        const first = spawnSync(process.execPath, [gate, 'run', pass], { cwd: proj, env, encoding: 'utf8' });
+        assert.equal(first.status, 0);
+        assert.match(first.stdout, /checks\.json is new since the last run[\s\S]*lint: /);
+        const second = spawnSync(process.execPath, [gate, 'run', pass], { cwd: proj, env, encoding: 'utf8' });
+        assert.doesNotMatch(second.stdout, /is (new|changed) since/, 'an unchanged file is not shown again');
+        // A pulled commit changes a command: the refusal shows it before anyone runs it.
+        commit(proj, '.plutos/checks.json', JSON.stringify([{ name: 'lint', command: `${pass} --pulled`, meaning: 'style' }]));
+        const r = hook(proj, 'git push');
+        assert.equal(r.status, 2);
+        assert.match(r.why, /checks\.json is changed since[\s\S]*lint: .*--pulled/);
     });
     console.log(`${checks} push-gate checks passed`);
 } finally {

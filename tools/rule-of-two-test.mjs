@@ -18,9 +18,8 @@ const ENGINE_DATA = {
     'lib/recommend.mjs': 'stack scanner: the engine project markers (Assets/, .uproject, project.godot) and the stack names',
     'lib/codeindex.mjs': 'stack scanner: detectProjectType and the C# scanner that reads an Assets/ tree',
     'lib/design.mjs': 'UI scanner: the engine project markers that keep a game project out of the web design line (games have their own visual-direction flow)',
+    'lib/file-types.mjs': 'file-type table read by the scanners (graphify, task context, code index): engine project and scene files (project.godot, .unity, .uproject) as rows of data',
     'lib/claim-check.mjs': 'the test-runner command list a session may claim to have run (run_tests)',
-    'ui/modules/codeindex.js': 'the code index view: the vendored-folder names and the Assets/ shard rule of that scan',
-    'ui/modules/setup.js': 'the display labels of the stacks the scanner detects',
 };
 
 function walk(dir, keep, acc = []) {

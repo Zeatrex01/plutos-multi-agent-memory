@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { findClaims, acceptClaims, checkClaimsAgainstBaseline } from '../lib/claims.mjs';
+import { findClaims, acceptClaims, checkClaimsAgainstBaseline, claimsReport } from '../lib/claims.mjs';
 import { CRITIQUE_MENTION, contractFindings } from '../lib/contract-check.mjs';
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -50,6 +50,23 @@ try {
         const named = findClaims(root).map(f => f.token).join(' ');
         for (const token of ['.plutos/local.json', 'modules/other/x.md', 'lib/<name>.mjs', 'lib/old.mjs', 'dist/out.js']) assert.ok(!named.includes(token), token);
     });
+    check('a line that says in Turkish the file went is not a finding; a Turkish line that does not say so is', () => {
+        const tr = path.join(scratch, 'turkish');
+        write(tr, 'lib/a.mjs', '');
+        write(tr, 'docs/x.md', ['Eski `lib/eski.mjs` kaldırıldı.', 'Ayrıca `lib/b.mjs` taşındı.', '`lib/c.mjs` silindi, `lib/d.mjs` artık yok.',
+            'Ayrıntı: `lib/e.mjs` dosyayı taşıyor.', 'Kaldırma planı `lib/f.mjs` için değil; bakınız `lib/g.mjs`.',
+            '`lib/h.mjs` değiştirildi.', '`lib/i.mjs` içinde hata vardı.'].join('\n'));
+        execFileSync('git', ['init', '-q'], { cwd: tr });
+        // "taşıyor" (carries) is not "taşındı" (moved); "Kaldırma" (removal) is a stem match and exempts its line.
+        // "değiştirildi" (was changed) and "vardı" (there was) say nothing went.
+        assert.deepEqual(tokens(tr, 'missing-path'), ['lib/e.mjs', 'lib/h.mjs', 'lib/i.mjs']);
+    });
+    check('the missing-path section ends with one hint naming the snapshot marker and --accept', () => {
+        const report = claimsReport({ fresh: [{ check: 'missing-path', file: 'docs/x.md', line: 2, token: 'lib/missing.mjs', text: '' }], known: [], fixed: 0 });
+        assert.equal(report.split('\n').filter(l => l.includes('hint:')).length, 1);
+        assert.match(report, /hint: .*<!-- plutos:snapshot -->.*--accept/);
+        assert.doesNotMatch(claimsReport({ fresh: [], known: [], fixed: 0 }), /hint:/);
+    });
     check('history is not a current record: a snapshot document and CHANGELOG.md are left out', () => {
         const files = new Set(findClaims(root).map(f => f.file));
         assert.ok(!files.has('docs/snap.md') && !files.has('CHANGELOG.md'));
@@ -78,7 +95,13 @@ try {
         const fresh = run(root);
         assert.equal(fresh.status, 1, fresh.stdout + fresh.stderr);
         assert.match(fresh.stdout, /docs\/x\.md:\d+ {2}lib\/new\.mjs/);
-        assert.equal(run(root, '--accept').status, 0);
+        // --accept is the owner's (needs an interactive terminal): from a script it is refused and
+        // writes nothing; the baseline it would record is acceptClaims's.
+        const refused = run(root, '--accept');
+        assert.equal(refused.status, 1);
+        assert.match(refused.stderr, /plutos check --accept needs an interactive terminal: it raises the claims baseline/);
+        assert.equal(run(root).status, 1, 'the refused --accept accepted nothing');
+        acceptClaims(root, findClaims(root));
         assert.equal(run(root).status, 0);
         assert.equal(JSON.parse(run(root, '--json').stdout).fresh.length, 0);
     });
@@ -88,7 +111,7 @@ try {
         write(source, 'index.mjs', '');
         write(source, 'lib/drawers.mjs', '');
         write(source, 'tools/run-all-tests.mjs', "const suites = ['smoke-test.mjs', 'tools/a-test.mjs'];\n");
-        write(source, 'docs/ai/PROJECT_MAP.md', 'npm test runs 3 suites.\nEach of the 2 suites has a timeout.\nIt used to be 4 suites.\n');
+        write(source, 'docs/ai/PROJECT_MAP.md', 'npm test runs 3 suites.\nEach of the 2 suites has a timeout.\nIt used to be 4 suites.\nEskiden 5 suites vardı.\n');
         write(source, 'docs/handoff/BOARD.md', '### Claude · DONE · x\n- **Result / Output:** npm test: all 5 suites passed.\n');
         execFileSync('git', ['init', '-q'], { cwd: source });
         assert.deepEqual(tokens(source, 'count'), ['3 suites (runs 2)']);
@@ -170,7 +193,8 @@ try {
         const out = gateCheck();
         assert.equal(out.status, 1, out.stdout + out.stderr);
         assert.match(out.stdout, /contract-unreviewed: 2\n {2}index\.mjs:\d+ {2}a contract line changed in index\.mjs at [0-9a-f]{7}; run a critique seat/);
-        assert.equal(gateCheck('--accept').status, 0);
+        assert.equal(gateCheck('--accept').status, 1, 'the owner\'s terminal only');
+        acceptClaims(gate, findClaims(gate));
         const accepted = JSON.parse(fs.readFileSync(path.join(gate, 'tools', 'claims-baseline.json'), 'utf8')).accepted;
         assert.ok(accepted.includes(`contract-unreviewed|index.mjs|${edit.slice(0, 7)}`), accepted.join(' '));
         assert.equal(gateCheck().status, 0);
@@ -212,7 +236,7 @@ try {
     check('PLUT_OS\'s own records hold no finding beyond its baseline', () => {
         const { fresh } = checkClaimsAgainstBaseline(appRoot);
         assert.deepEqual(fresh.map(f => `${f.check} ${f.file}:${f.line} ${f.token}`), [],
-            'fix each, or accept it with "node cli.mjs check --accept" and say why in the commit');
+            'fix each, or ask the owner to accept it with "node cli.mjs check --accept" in a terminal and say why in the commit');
     });
     console.log(`${checks} claims checks passed`);
 } finally {

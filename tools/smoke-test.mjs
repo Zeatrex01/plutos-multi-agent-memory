@@ -136,13 +136,9 @@ try {
         dashboardSource.indexOf('server.listen(PORT, LISTEN_HOST')
             < dashboardSource.indexOf('const installRegistration = registerCurrentInstall()'));
     check('empty folder is detected as an unknown stack', add.detected && add.detected.stack === 'unknown', JSON.stringify(add.detected));
-    const docsHub = await get('/api/docs');
-    check('document hub reads source docs only', Array.isArray(docsHub.docs) && docsHub.docs.length === 0);
     const observedBoard = await get('/api/board');
     check('local task board is usable without project artifacts', observedBoard.exists === true
         && observedBoard.path.startsWith(add.storageRoot), JSON.stringify(observedBoard));
-    const idxAfterAdd = await get('/api/codeindex');
-    check('codebase index is available after add', idxAfterAdd.exists === true, JSON.stringify({ exists: idxAfterAdd.exists }));
     const observedConnect = await get('/api/connect');
     check('observe mode exposes no actionable client setup', observedConnect.installed === false
         && observedConnect.clients.every(c => c.canWrite === false && c.deeplink === null && c.command === null),
@@ -178,38 +174,12 @@ try {
         body: JSON.stringify({ client: 'claude-code', projectRoot: path.join(tmpRoot, 'old-selected-project') }) });
     check('connection write rejects a stale project before touching client config', staleTarget.status === 409
         && fs.readFileSync(path.join(projectDir, '.mcp.json'), 'utf8') === connectedConfig);
-    const docsAfterInstall = await get('/api/docs');
-    check('document hub lists shared files after explicit install',
-        Array.isArray(docsAfterInstall.docs) && docsAfterInstall.docs.some(d => (d.path || '').includes('docs/handoff/BOARD.md')),
-        JSON.stringify((docsAfterInstall.docs || []).slice(0, 5).map(d => d.path)));
-    // The link map: a Markdown link to a .md file is resolved against the document's own folder
-    // into a project path; a web link is not a document; a [[wiki]] link stays a name.
+    // Fixture documents the later brief checks read (the Documents page that tested their links is gone).
     fs.writeFileSync(path.join(projectDir, 'README.md'), '# p\n\nSee [notes](docs/notes.md), [the board](./docs/handoff/BOARD.md#top) and [a site](https://example.com/page.md).\n');
     fs.writeFileSync(path.join(projectDir, 'docs', 'notes.md'), '# notes\n\nBack to [the board](handoff/BOARD.md) and [[ROSTER]]; outside: [x](../../outside.md).\n');
-    const linked = await get('/api/docs');
-    const linksOf = p => (linked.docs || []).find(d => d.path === p)?.links;
-    check('document hub resolves Markdown links to project paths and keeps wiki names',
-        JSON.stringify(linksOf('README.md')) === JSON.stringify(['docs/notes.md', 'docs/handoff/BOARD.md'])
-        && JSON.stringify(linksOf('docs/notes.md')) === JSON.stringify(['ROSTER', 'docs/handoff/BOARD.md']),
-        JSON.stringify({ readme: linksOf('README.md'), notes: linksOf('docs/notes.md') }));
-    check('document hub drift carries staleRefs for every document',
-        (linked.docs || []).every(d => d.drift && Array.isArray(d.drift.staleRefs)));
     const installedConnect = await get('/api/connect');
     check('connect reports the project launcher after the kit install', installedConnect.installed === true && installedConnect.launcher === true
         && observedConnect.launcher === false, JSON.stringify({ installed: installedConnect.launcher, observed: observedConnect.launcher }));
-    const openDoc = async (docPath, headers = {}) => {
-        const r = await request(BASE + '/api/docs/open', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ path: docPath }) });
-        return { status: r.status, body: await r.json() };
-    };
-    const openedBoard = await openDoc('docs/handoff/BOARD.md');
-    check('document hub Open opens a listed project document', openedBoard.status === 200 && openedBoard.body.success === true
-        && sameProjectPath(path.dirname(path.dirname(path.dirname(openedBoard.body.path))), projectDir), JSON.stringify(openedBoard));
-    fs.writeFileSync(path.join(tmpRoot, 'outside.md'), '# outside');
-    const escapes = await Promise.all(['../outside.md', path.join(tmpRoot, 'outside.md'), 'docs/handoff', 'docs/handoff/missing.md', '.plutos/plutos.config.json', ''].map(p => openDoc(p)));
-    check('document hub Open refuses paths outside the project, folders, missing and non-markdown files',
-        escapes.every(r => r.status === 400 && r.body.success === false), JSON.stringify(escapes.map(r => r.status)));
-    const forwardedOpen = await openDoc('docs/handoff/BOARD.md', PROXIED_IP);
-    check('document hub Open works on the PLUTOS computer only', forwardedOpen.status === 403 && forwardedOpen.body.success === false, JSON.stringify(forwardedOpen));
     // Isolation regression: PLUT_OS dogfoods its own live board and roster. Those files may
     // contain active tasks and agents, but a target project must receive only clean scaffold
     // templates. Exact equality makes the source boundary executable instead of relying on
@@ -300,7 +270,7 @@ try {
     // write; rendered raw through innerHTML they run as script with the dashboard's own local
     // authority (Report and Document Hub did, until ui/esc.js reached them). A module that
     // writes innerHTML imports the escaping helper, unless it only ever renders its own constants.
-    const STATIC_ONLY_MARKUP = new Set(['features.js']);
+    const STATIC_ONLY_MARKUP = new Set();
     const unescapedModules = fs.readdirSync(path.join(__dirname, 'ui', 'modules'))
         .filter(f => f.endsWith('.js') && !STATIC_ONLY_MARKUP.has(f))
         .filter(f => {
@@ -334,11 +304,8 @@ try {
     // Map works without any MCP — it only needs a recognizable project (here a package.json).
     fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'demo', dependencies: { react: '^18' } }));
     fs.writeFileSync(path.join(projectDir, 'app.js'), 'export const x = 1;');
-    const scan = await post('/api/codeindex/scan', {});
-    check('codebase map scan works without MCP', scan.success === true);
-    const graphIdx = await get('/api/codeindex');
-    check('codeindex API concatenates shards for the graph',
-        graphIdx.exists === true && /### Folder:/.test(graphIdx.content || ''), JSON.stringify({ exists: graphIdx.exists, start: String(graphIdx.content || '').slice(0, 120) }));
+    // The map scan used to run through POST /api/codeindex/scan (gone with the Code map page).
+    (await import('../lib/codeindex.mjs')).runCodeScan(projectDir);
 
     // Unknown stacks (C++, Rust, Python...) must scan too — the generic fallback, not an
     // error. Regression check for: runCodeScan threw on any non-Unity/non-Node project.
@@ -375,92 +342,6 @@ try {
         && fs.readFileSync(path.join(esmDir, 'docs', 'ai', 'codeindex', '_root.md'), 'utf8').includes('legacyHelper'));
     check('catalog stays a table of shards, not the symbol dump',
         !fs.readFileSync(path.join(esmDir, 'docs', 'ai', 'CODEINDEX.md'), 'utf8').includes('bootKernel'));
-
-    // The code map's split between the project's own code and third-party code. It assumed one
-    // game layout: only the Unity shards GAME and PROJECT (Assets/_GAME, Assets/_PROJECT) counted
-    // as the project, so PLUT_OS's own checkout drew every folder as "Third-party / SDKs" and said
-    // "0 shown (0 in _GAME/_PROJECT)". The real scanner over three layouts, then the real browser
-    // module over its output (imports stubbed, as for features.js further down).
-    {
-        const codemapFixture = (name, files) => {
-            const dir = path.join(tmpRoot, 'codemap-' + name);
-            for (const [rel, body] of Object.entries(files)) {
-                fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
-                fs.writeFileSync(path.join(dir, rel), body);
-            }
-            runCodeScan(dir);
-            return readIndexShards(dir, 'obsidian');
-        };
-        const nodeIndex = codemapFixture('node', {
-            'package.json': '{"name":"codemap-node","type":"module"}\n',
-            'app.js': 'export const start = 1;\n',
-            'lib/core.mjs': 'export function boot() { return 1; }\n',
-            'tools/lib/helper.mjs': 'export const help = 2;\n',
-            'src/ThirdParty/legacy.js': 'export function old() { return 3; }\n'
-        });
-        const unityIndex = codemapFixture('unity', {
-            'ProjectSettings/ProjectVersion.txt': 'm_EditorVersion: 2022.3.0f1\n',
-            'Assets/_GAME/Scripts/Player.cs': 'public class Player { public void Jump() {} }\n',
-            'Assets/_PROJECT/Managers/GameManager.cs': 'public class GameManager { public void Begin() {} }\n',
-            'Assets/AppsFlyer/Scripts/AppsFlyer.cs': 'public class AppsFlyer { public void Init() {} }\n'
-        });
-        const godotIndex = codemapFixture('godot', {
-            'project.godot': 'config_version=5\n',
-            'scripts/player.gd': 'class_name Player\nextends Node\n\nfunc jump():\n\tpass\n',
-            'addons/dialogue/plugin.gd': 'extends EditorPlugin\n\nfunc _enter_tree():\n\tpass\n'
-        });
-
-        const escSource = fs.readFileSync(path.join(__dirname, 'ui', 'esc.js'), 'utf8').replace(/^export /gm, '');
-        const mapSource = fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'codeindex.js'), 'utf8');
-        const stubbed = mapSource.replace(/^import \{ ([^}]+) \} from '([^']+)';$/gm, (line, names, from) => (from === '../esc.js' ? escSource
-            : names.split(',').map(n => n.trim()).map(n => (n === 'currentLang' ? "const currentLang = 'en';" : `const ${n} = k => (typeof k === 'string' ? k : '');`)).join('\n')));
-        const probeDir = fs.mkdtempSync(path.join(tmpRoot, 'codemapprobe-'));
-        const probe = path.join(probeDir, 'codeindex.probe.mjs');
-        fs.writeFileSync(probe, stubbed);
-        const savedWindow = globalThis.window;
-        globalThis.window = {};
-        try {
-            const map = await import(pathToFileURL(probe).href);
-            const read = index => {
-                const m = map.buildModel(index);
-                return { m, by: Object.fromEntries(m.folders.map(f => [f.key, f])), shape: JSON.stringify(m.folders.map(f => [f.key, f.thirdParty])) };
-            };
-
-            const node = read(nodeIndex);
-            check('code map: a non-engine project is its own code, not third-party',
-                node.m.rule === 'paths' && node.by.lib && !node.by.lib.thirdParty && node.by[''] && !node.by[''].thirdParty, node.shape);
-            check('code map: only a vendored folder (ThirdParty) is third-party in it',
-                node.by['src/ThirdParty'] && node.by['src/ThirdParty'].thirdParty === true
-                && node.m.folders.filter(f => f.thirdParty).length === 1, node.shape);
-            check('code map: two folders named lib stay two boxes',
-                node.by.lib && node.by['tools/lib'] && node.by['tools/lib'].label === 'tools/lib', node.shape);
-            const summary = map.mapSummary(node.m, map.capFiles(node.m, 500));
-            check('code map: the status counts the project\'s own files',
-                summary.ownFiles === 3 && summary.shown === 3 && summary.folded === 1, JSON.stringify(summary));
-
-            const unity = read(unityIndex);
-            check('code map: a Unity project with _GAME and _PROJECT keeps the owner\'s rule',
-                unity.m.rule === 'core-shards'
-                && unity.by['Assets/_GAME/Scripts'] && !unity.by['Assets/_GAME/Scripts'].thirdParty
-                && unity.by['Assets/_PROJECT/Managers'] && !unity.by['Assets/_PROJECT/Managers'].thirdParty
-                && unity.by['Assets/AppsFlyer/Scripts'] && unity.by['Assets/AppsFlyer/Scripts'].thirdParty === true, unity.shape);
-
-            const godot = read(godotIndex);
-            check('code map: Godot addons are third-party, its scripts are the project',
-                godot.m.rule === 'paths' && godot.by.scripts && !godot.by.scripts.thirdParty
-                && godot.by['addons/dialogue'] && godot.by['addons/dialogue'].thirdParty === true, godot.shape);
-
-            const vendored = ['node_modules/x/a.js', 'Plugins/Vendor/a.cpp', 'Source/ThirdParty/zlib/z.h', 'Assets/TextMesh Pro/Scripts/T.cs'];
-            const own = ['packages/app/a.js', 'plugins/site.js', 'lib/a.mjs', 'a.js'];
-            check('code map: vendored folder names, spelled the engines\' way',
-                vendored.every(p => map.isVendoredPath(p)) && !own.some(p => map.isVendoredPath(p)),
-                JSON.stringify([...vendored, ...own].map(p => [p, map.isVendoredPath(p)])));
-            const status = mapSource.match(/function updateStatus\(\)[\s\S]*?\r?\n}\r?\n/);
-            check('code map: the status line names no game layout', status && !/_GAME|_PROJECT/.test(status[0]));
-        } finally {
-            globalThis.window = savedWindow;
-        }
-    }
 
     // Doc drift: a document is stale when a file it NAMES changed after it was last committed,
     // not merely because commits happened. Both halves matter — flagging every doc on every
@@ -630,7 +511,7 @@ try {
         // are RUN, and the decision they turn on is one exported function embedded into the
         // generated file by source, not a copy of it in a string.
         const script = fs.readFileSync(w.watcherScriptPath(wDir), 'utf8');
-        check('the hook reads the board and never writes', script.includes('/api/board') && !script.includes('POST'));
+        check('the hook reads BOARD.md and never writes', !script.includes('/api/board') && !script.includes('fetch(') && !script.includes('POST'));
         check('the generated hook embeds the real decision, not a second copy of it',
             script.includes('function selectAssignedTask'));
 
@@ -642,7 +523,7 @@ try {
                 return { code: 0, stderr: '' };
             } catch (e) { return { code: e.status, stderr: String(e.stderr || '') }; }
         };
-        const seat = { PLUTOS_AGENT: 'watch-seat', PLUTOS_BOARD_URL: 'http://127.0.0.1:9/api/board' };
+        const seat = { PLUTOS_AGENT: 'watch-seat' };
 
         // Every failure path exits 0: a watcher must never be the reason a session cannot end.
         check('the hook refuses to recurse on itself', runHook('{"stop_hook_active":true}', seat).code === 0);
@@ -970,7 +851,7 @@ try {
     // reason. These checks fail if either half of that comes back — an interpreter spawn in
     // the module, or a build that reports success without producing a graph.
     {
-        const { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph, renderGraphPage } =
+        const { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph } =
             await import('../lib/graphify.mjs');
         const gDir = path.join(tmpRoot, 'graphify-fixture');
         fs.mkdirSync(path.join(gDir, 'lib'), { recursive: true });
@@ -1067,46 +948,16 @@ try {
         const codeStatus = getProjectDocGraphStatus(gDir, 'code');
         check('graphify status reads the graph back',
             codeStatus.exists === true && codeStatus.nodeCount === polyglot.nodeCount);
-        check('graphify writes the html and report the routes serve',
-            codeStatus.hasHtml === true && codeStatus.hasReport === true);
-        check('graphify html loads the vendored library, not a CDN', (() => {
-            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
-            return html.includes('/ui/vendor/vis-network.min.js') && !/https?:\/\//.test(html);
-        })());
-
-        // The map froze: physics was switched off for good on stabilizationIterationsDone, so a
-        // dense graph stayed knotted in whatever shape the last iteration left and dragging a
-        // node moved nothing but that node. Stopping the simulation is right; removing it is not.
-        check('graphify html hands the layout simulation back to the reader', (() => {
-            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
-            return html.includes('id="physics"') && /setPhysics\(/.test(html)
-                && !/setOptions\(\{ physics: false \}\)/.test(html);
-        })());
-        // A flat iteration count under-solved every graph bigger than the one it was tuned on.
-        check('graphify stabilization budget grows with the graph', (() => {
-            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
-            return /stabilization: \{ iterations: ITERATIONS \}/.test(html)
-                && /DATA\.nodes\.length \* \d+/.test(html);
-        })());
-        // The owner opened the graph to a black, empty canvas under a header that said 322 nodes:
-        // vis draws nothing until the layout has settled (5.5 s there), and nothing said so.
-        check('graphify page shows its progress while the layout settles', (() => {
-            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
-            return html.includes('id="busy"') && html.includes("'stabilizationProgress'") && html.includes("'forceAtlas2Based'");
-        })());
-        check('graphify page follows the dashboard theme', (() => {
-            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
-            return html.includes(':root[data-theme="dark"]') && html.includes("'plutos-mode'") && !html.includes('#0b0f19');
-        })());
-        // A graph built by an older version keeps its HTML copy; the dashboard draws today's page
-        // from the graph data instead, so a page fix does not wait for a rebuild.
-        check('the dashboard serves the graph page from the data, not a stale copy', (() => {
+        check('graphify writes the report beside the graph data', codeStatus.hasReport === true);
+        // The graph viewer page and its vendored vis-network were cut (owner decision
+        // d-51e97352b22e, 2026-11-14). A code_graph.html would load a script the dashboard no
+        // longer serves, so a build writes none and removes one an older version left.
+        check('graphify writes no html page and removes an old one', (() => {
             const file = path.join(gDir, 'graphify-out', 'code_graph.html');
-            const kept = fs.readFileSync(file, 'utf8');
-            fs.writeFileSync(file, '<html>an old page</html>');
-            const served = renderGraphPage(gDir);
-            fs.writeFileSync(file, kept);
-            return typeof served === 'string' && served.includes('/ui/vendor/vis-network.min.js') && !served.includes('an old page');
+            const none = !fs.existsSync(file);
+            fs.writeFileSync(file, '<script src="/ui/vendor/vis-network.min.js"></script>');
+            buildProjectDocGraph(gDir, 'code');
+            return none && !fs.existsSync(file);
         })());
 
         const bogus = buildProjectDocGraph(gDir, 'sideways');
@@ -1289,7 +1140,10 @@ try {
 
     // 1a3. Recommendation engine: works with ZERO interview (structure-only projects get
     // real signal from the scan alone — react in package.json → frontend framework).
-    const recs0 = await get('/api/recommendations');
+    // The dashboard route left with the Setup page (2026-11-14); the engine is lib/recommend.mjs.
+    const { scanProject, buildRecommendation } = await import('../lib/recommend.mjs');
+    const recSignals = scanProject(projectDir);
+    const recs0 = { hasInterview: fs.existsSync(path.join(projectDir, 'docs', 'handoff', 'PROJECT_INTERVIEW.md')), signals: recSignals, recommendation: buildRecommendation(recSignals, {}) };
     check('recommendations work without interview', recs0.hasInterview === false && recs0.signals.stack === 'node');
     check('react dependency detected', recs0.signals.frameworks.includes('react') && recs0.signals.hasFrontendDeps === true);
     check('the recommendation carries no role advice', !('roles' in recs0.recommendation) && Array.isArray(recs0.recommendation.reasons));
@@ -1339,6 +1193,10 @@ try {
         check('GET /sw.js: text/javascript, no-cache, Service-Worker-Allowed /', sw.status === 200
             && sw.headers.get('content-type') === 'text/javascript' && sw.headers.get('cache-control') === 'no-cache'
             && sw.headers.get('service-worker-allowed') === '/' && swText.includes("'navigate'") && swText.includes("'/api/'"), `${sw.status} ${[...sw.headers].join(' ')}`);
+        // The offline page is plain text and a Retry button: the orbit logo with its gradient went with
+        // the rest of the decoration (owner decision d-51e97352b22e, 2026-11-14).
+        check('the offline page carries no decorative logo', swText.includes('PLUT_OS is not running')
+            && !/<svg|Gradient/.test(swText));
         const manifestRes = await fetch(BASE + '/ui/manifest.webmanifest');
         let manifest = null;
         try { manifest = JSON.parse(await manifestRes.text()); } catch { /* reported below */ }
@@ -1347,7 +1205,7 @@ try {
         check('the manifest parses, is standalone from /, and lists a 512 icon that is served', manifestRes.status === 200 && manifest?.display === 'standalone'
             && manifest.start_url === '/' && manifest.id === '/' && !('orientation' in manifest) && bigRes?.status === 200
             && bigRes.headers.get('content-type') === 'image/png', JSON.stringify(manifest));
-        check('the Settings page has the Updates and app cards and the boot registers the worker', html.includes('id="settings-updates"') && html.includes('id="settings-app"')
+        check('the Settings page has the Updates card and the boot registers the worker', html.includes('id="settings-updates"')
             && fs.readFileSync(path.join(__dirname, 'ui', 'main.js'), 'utf8').includes('initAppShell()'));
     }
 
@@ -1914,29 +1772,20 @@ try {
     ].join('\n'));
     check('fenced board example is not an entry either',
         boardFenced.length === 1 && boardFenced[0].agent === 'real-agent', JSON.stringify(boardFenced.map(e => e.agent)));
-    const state0 = await get('/api/state');
-    check('state endpoint answers (empty)', state0.state === null && Array.isArray(state0.recent));
-
     // 1e2. Project interview is OPT-IN: not dropped by default; answering starts one
     check('interview NOT dropped by default', !fs.existsSync(path.join(projectDir, 'docs', 'handoff', 'PROJECT_INTERVIEW.md')));
-    const iv0 = await get('/api/interview');
-    check('interview reported as not started', iv0.exists === false && Object.keys(iv0.answers).length === 0 && iv0.recommendation.complete === false);
-    const ivPost = await post('/api/interview', { answers: { type: 'game', stage: 'brand-new-mvp', goal: 'ship-demo-fast', ai: 'claude-code', team: 'solo' } });
-    check('interview answers accepted + recommendation returned', ivPost.success === true && !('roles' in ivPost.recommendation) && ivPost.recommendation.reasons.some(r => r.startsWith('game project')));
-    const ivFile = fs.readFileSync(path.join(projectDir, 'docs', 'handoff', 'PROJECT_INTERVIEW.md'), 'utf8');
-    check('answers written into the file', ivFile.includes('> answer: game') && ivFile.includes('Recommended MCPs:'));
-    const iv1 = await get('/api/interview');
-    check('answers persist across reads', iv1.answers.type === 'game' && iv1.recommendation.complete === true);
-
-    // 1e3. Skills page (lib/skills.mjs): the project's skill folders and the pack registry, both
-    // empty on a fresh project, and the homes the clients read from.
-    const sk0 = await get('/api/skills');
-    check('skills endpoint answers with skills, packs and homes', Array.isArray(sk0.skills) && sk0.skills.length === 0
-        && Array.isArray(sk0.packs) && sk0.packs.length === 0 && Array.isArray(sk0.homes) && sk0.homes.some(h => h.folder === '.agents/skills'), JSON.stringify(sk0).slice(0, 160));
-    const pk0 = await get('/api/packs');
-    check('packs registry endpoint answers without a project', Array.isArray(pk0.packs) && pk0.packs.length === 0);
-    const badOn = await post('/api/packs/on', { id: 'no-such-pack' });
-    check('switching on an unregistered pack is refused with one line', badOn.success === false && /Unknown pack/.test(badOn.message), badOn.message);
+    // The interview is asked by the AI (AGENTS.md Rule 0); the Setup page and its routes left on
+    // 2026-11-14, so the file round trip is checked through lib/interview.mjs.
+    {
+        const { recommend, parseInterview, renderInterview } = await import('../lib/interview.mjs');
+        check('interview reported as not started', recommend({}).complete === false);
+        const answers = { type: 'game', stage: 'brand-new-mvp', goal: 'ship-demo-fast', ai: 'claude-code', team: 'solo' };
+        const rec = recommend(answers);
+        check('interview answers give a recommendation', !('roles' in rec) && rec.reasons.some(r => r.startsWith('game project')));
+        const ivFile = renderInterview(answers);
+        check('answers written into the file', ivFile.includes('> answer: game') && ivFile.includes('Recommended MCPs:'));
+        check('answers persist across reads', parseInterview(ivFile).type === 'game' && recommend(parseInterview(ivFile)).complete === true);
+    }
 
     // 3b. Escaping is a shared helper, not a per-module habit. The dashboard renders content it
     // did not write — board entries, roster rows, session logs read out of the target project —
@@ -1951,7 +1800,7 @@ try {
     check('escHref drops javascript:', esc.escHref("javascript:fetch('/api/workspaces/repair')") === '#');
     check('escHref keeps an ordinary file link', esc.escHref('file:///C:/x.mjs').startsWith('file:'));
 
-    const RENDERERS = ['board.js', 'memory.js', 'codeindex.js', 'workspaces.js', 'fsbrowse.js'];
+    const RENDERERS = ['board.js', 'overview.js', 'approvals.js', 'workspaces.js', 'fsbrowse.js'];
     for (const mod of RENDERERS) {
         const src = fs.readFileSync(path.join(__dirname, 'ui', 'modules', mod), 'utf8');
         check(`${mod} imports the shared escapers`, /from '\.\.\/esc\.js'/.test(src));
@@ -1963,8 +1812,7 @@ try {
     // rather than in someone's browser.
     const RAW_SINKS = [
         ['board.js', /\$\{(e\.(agent|title|status)|a\.(name|owner|role)|w\.(source|message))\}/],
-        ['memory.js', /\$\{(log\.(agent|action)|s\.(lastTask|status|notes|headline)|item\.(claim|detail))\}/],
-        ['codeindex.js', /\$\{(data\.(name|folder|signature|methods|fires|listens|codeLink)|folderName)\}/]
+        ['overview.js', /\$\{(next|project)\}/]
     ];
     for (const [mod, rawPattern] of RAW_SINKS) {
         const src = fs.readFileSync(path.join(__dirname, 'ui', 'modules', mod), 'utf8');
@@ -2115,7 +1963,7 @@ try {
     }
 
     // 5. The roster: an agent registered as introduced (owner unclaimed) is claimed by the first
-    // agent_register, and the owner can remove an entry from the Board tab.
+    // registration without a status, and the owner can remove an entry from the Board tab.
     const introducedName = 'mvp-agent';
     const { writeRosterEntry } = await import('../lib/roster-store.mjs');
     writeRosterEntry(projectDir, { name: introducedName, owner: 'unclaimed', role: 'quality-reviewer', kind: 'subagent', memory: `.agents/${introducedName}/MEMORY.md`, status: 'introduced' });
@@ -2253,13 +2101,13 @@ try {
     check('index.mjs applies the project guard at dispatch',
         /requiresProject\(name, args/.test(fs.readFileSync(path.join(__dirname, 'index.mjs'), 'utf8')));
 
-    // 5b. A real agent_register call (no dashboard involved, no status param — same shape as
+    // 5b. A real registration (plutos_create_agent; agent_register left on 2026-11-14) (no dashboard involved, no status param — same shape as
     // the MCP tool) on that same name should claim ownership and flip status to active.
     const rosterPath = path.join(projectDir, 'docs', 'handoff', 'ROSTER.md');
     const introducedContent = fs.readFileSync(rosterPath, 'utf8');
     const { content: claimedContent, action: claimAction } = applyRosterUpdate(introducedContent, { name: introducedName, owner: 'claude', role: 'quality-reviewer' });
     const claimedEntry = parseRoster(claimedContent).find(a => a.name === introducedName);
-    check('real agent_register claims owner + flips status to active',
+    check('a real registration claims owner + flips status to active',
         claimAction === 'refreshed' && claimedEntry?.owner === 'claude' && claimedEntry?.fields?.Status === 'active',
         JSON.stringify(claimedEntry));
     let conflictingOwnerRejected = false;
@@ -2272,7 +2120,7 @@ try {
         && parseRoster(sameOwnerRefresh.content).find(a => a.name === introducedName)?.owner === 'CLAUDE');
 
     // 5c. Atomic conflict-safe write: a concurrent writer sneaking an entry into the roster
-    // between our read and write must NOT be lost (the board_update/agent_register race fix).
+    // between our read and write must NOT be lost (the board_update/roster race fix).
     const raceFile = path.join(tmpRoot, 'race.md');
     fs.writeFileSync(raceFile, "# ROSTER\n\n---\n\n(no agents registered — add your entry above this line)\n");
     let raceInjected = false;
@@ -2571,8 +2419,13 @@ for (let i = 0; i < n; i++) {
     check('brief shows where the last session left off', brief.includes('reviewed the exporter') && shortBrief.includes('reviewed the exporter'));
     check('brief lists what to read with sizes', /AGENTS\.md.*KB/.test(brief));
     // Both briefs name the install's skill path once; masked, so a long checkout path (a clone under the
-    // temp folder) does not move the ratio.
-    const masked = text => text.split(path.normalize(SCOPE_SKILL)).join('<SKILL>');
+    // temp folder) does not move the ratio. The drawer tool map (lib/drawers.mjs) is a fixed block only
+    // the short brief carries (the full one is the snapshot's handover); it is the same in every project,
+    // so it is left out of the ratio too. Its size is held by tools/token-budget.json.
+    const { drawerBriefLines } = await import('../lib/drawers.mjs');
+    const drawerBlock = drawerBriefLines(projectDir).join('\n');
+    const masked = text => text.split(path.normalize(SCOPE_SKILL)).join('<SKILL>').split(drawerBlock).join('');
+    check('the short brief carries the drawer tool map', drawerBlock.length > 0 && shortBrief.includes(drawerBlock));
     check('the short brief is a fraction of the full one', masked(shortBrief).length * 2 < masked(brief).length, `${masked(shortBrief).length} of ${masked(brief).length}`);
     // Whether the session's ending gets recorded is a fact about the environment the session
     // is working in, and the brief never said it — so an AI could not tell an unrecorded
@@ -2721,8 +2574,8 @@ for (let i = 0; i < n; i++) {
             !fs.existsSync(path.join(failDir, '.claude', 'agents', 'rollback-agent.md')));
     }
 
-    const contApi = await get('/api/continuity');
-    check('continuity and claim status are readable via API', contApi.exists === true
+    const contApi = { exists: true, ...parseContinuity(fs.readFileSync(continuityPathFor(projectDir), 'utf8')), context: assessContext(projectDir) };
+    check('continuity and claim status are readable', contApi.exists === true
         && contApi.digest.length === 0 && contApi.sessions.length === 5
         && contApi.context?.counts?.unverified === 2,
         JSON.stringify({ d: contApi.digest?.length, s: contApi.sessions?.length, c: contApi.context?.counts }));
@@ -2922,37 +2775,6 @@ for (let i = 0; i < n; i++) {
     // The Overview module must be servable (it is the landing screen).
     const ovRes = await fetch(BASE + '/ui/modules/overview.js');
     check('ui/modules/overview.js served', ovRes.status === 200 && (await ovRes.text()).includes('fetchOverview'));
-
-    // 5a7. Story deck: sessions' plain-language story lines accumulate into a pitch-style
-    // presentation, merged chronologically from the LIVE ledger AND the archive — so the
-    // roadmap survives session rotation. Sessions without a story fall back to their
-    // headline, honestly labeled.
-    recordSession(projectDir, { ai: 'claude', headline: 'payments milestone',
-        story: 'Payments work now: a customer can actually buy the product.' });
-    const { buildDeck, renderDeckMarkdown, renderDeckHtml } = await import('../lib/deck.mjs');
-    const deck = buildDeck(projectDir);
-    check('deck merges archived + live sessions chronologically', deck.slides.length >= 8
-        && deck.slides[0].text.includes('wired the exporter'), `${deck.slides.length} slides, first: ${deck.slides[0]?.text}`);
-    check('story line lands as a real slide', deck.slides.some(s => s.isStory
-        && s.text.includes('customer can actually buy')), JSON.stringify(deck.slides.slice(-1)));
-    check('storyless sessions fall back to headline, labeled', deck.slides.some(s => !s.isStory)
-        && renderDeckMarkdown(deck).includes('no story line was recorded'));
-    const deckApi = await get('/api/deck');
-    check('deck readable via API with markdown', deckApi.slides.length === deck.slides.length
-        && deckApi.markdown.includes('the story so far'));
-    const deckPage = await (await fetch(BASE + '/deck')).text();
-    check('/deck serves the standalone presentation', deckPage.includes('<!DOCTYPE html>')
-        && deckPage.includes('customer can actually buy') && deckPage.includes('scroll-snap'));
-    // The identity (2026-11-03): the cover and the close carry the mark, each copy with its own
-    // gradient ids, and the close says the identity record's line in the deck's language.
-    check('deck cover and close carry the mark with distinct ids', (deckPage.match(/class="deck-mark"/g) || []).length === 2
-        && deckPage.includes('url(#pmg-cover)') && deckPage.includes('url(#pmg-close)')
-        && /class="slide cover">/.test(deckPage) && /class="slide close">/.test(deckPage));
-    check('deck close carries the identity line in the chosen language', deckPage.includes('one orbit per connected AI')
-        && (await (await fetch(BASE + '/deck?lang=tr')).text()).includes('bağlı her yapay zekâ için bir yörünge'));
-    check('deck html escapes content', renderDeckHtml({ project: 'x', generatedAt: '', what: '',
-        slides: [{ date: '2026-01-01', ai: 'a', text: '<script>alert(1)</script>', isStory: true }], next: '' })
-        .includes('&lt;script&gt;'));
 
     // 5a9. Universal guarantee: the BOARD layer reaches every project. A project with its
     // OWN AGENTS.md keeps it untouched but gets the compact PLUTOS_PROTOCOL.md next to the
@@ -3291,22 +3113,18 @@ for (let i = 0; i < n; i++) {
     check('no workspace → hasProject false, never PLUT_OS own repo',
         noProject.hasProject === false && noProject.branch === null && noProject.fingerprint === 'no-project', JSON.stringify(noProject).slice(0, 100));
 
-    // 5z1b. Module gating: the data-module tags in the HTML and the MODULES registry in
-    // features.js must agree, or a tab becomes untogglable (tagged but unlisted) or a toggle
-    // controls nothing (listed but untagged). Pure text-level check — no DOM needed.
+    // 5z1b. The four pages (owner decision d-51e97352b22e, 2026-11-14): Home, Board, Projects and
+    // Settings, with nothing optional left to switch on or off. Text-level checks, no DOM.
     {
         const html = fs.readFileSync(path.join(__dirname, 'dashboard-ui.html'), 'utf8');
-        const featSrc = fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'features.js'), 'utf8');
-        const tagged = [...html.matchAll(/data-module="([^"]+)"/g)].map(m => m[1]).sort();
-        const listed = [...featSrc.matchAll(/\{ id: '([^']+)'/g)].map(m => m[1]).sort();
-        check('module registry matches data-module tags', JSON.stringify(tagged) === JSON.stringify(listed),
-            `html: ${tagged.join(',')} vs registry: ${listed.join(',')}`);
-        check('core trio tabs are NOT module-gated',
-            !tagged.includes('overview') && !tagged.includes('board') && !tagged.includes('setup') && !tagged.includes('settings'));
-        // The Skills page: its tab, its section (the view- id convention router.js resolves) and its fetch.
-        check('skills page has a gated tab, a section and a router fetch',
-            tagged.includes('skills') && html.includes('id="view-skills"') && html.includes("switchView('skills', this)")
-            && /viewId === 'skills'\) fetchSkills\(\)/.test(fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'router.js'), 'utf8')));
+        const routerSrc = fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'router.js'), 'utf8');
+        const views = [...html.matchAll(/<section id="([^"]+)" class="view-section/g)].map(m => m[1]).sort();
+        check('the dashboard has exactly the four kept pages', JSON.stringify(views) === JSON.stringify(['hub-view', 'view-board', 'view-overview', 'view-settings']), views.join(','));
+        check('no optional-module tags are left in the markup', !/data-module="/.test(html));
+        check('every sidebar entry opens a page the router dispatches',
+            [...html.matchAll(/class="tab-btn[^"]*" onclick="switchView\('([^']+)'/g)].map(m => m[1])
+                .every(id => routerSrc.includes(`viewId === '${id}'`)));
+        check('Home has the waiting-questions block and the status block', html.includes('id="home-waiting"') && html.includes('id="home-status"'));
         // One stray </div> closes .main-container early, and every page after it renders beside
         // the menu, 64 px wide (Job 18, the Documents markup). Walk the tags with comments and
         // scripts removed: each page section must open while the main container is still open.
@@ -3324,10 +3142,6 @@ for (let i = 0; i < n; i++) {
             }
             check('every page section sits inside the main container', outside.length === 0, outside.join(', '));
         }
-        check('every module has a description key', listed.every(id => {
-            const m = featSrc.match(new RegExp(`\\{ id: '${id}'[^}]*descKey: '([a-z_]+)'`));
-            return m && fs.readFileSync(path.join(__dirname, 'ui', 'i18n.js'), 'utf8').includes(m[1] + ':');
-        }));
         // i18n-guardian (docs/handoff/ROSTER.md): en and tr must carry the exact same keys.
         // Real incident (2026-08-28): a UI redesign moved i18n into this file and carried only
         // the English dictionary forward — tr silently fell from 382 keys to 65 with nothing
@@ -3345,83 +3159,6 @@ for (let i = 0; i < n; i++) {
             check('i18n: en and tr keep identical key sets', enStart >= 0 && trStart > enStart && enKeys.size > 0 && missingInTr.length === 0 && extraInTr.length === 0,
                 `en:${enKeys.size} tr:${trKeys.size} missing-in-tr:[${missingInTr.join(',')}] extra-in-tr:[${extraInTr.join(',')}]`);
         }
-        // Owner correction (2026-08-01): the first module cut hid the knowledge-visibility
-        // tabs too, which contradicts the product's purpose — seeing the shared knowledge IS
-        // the product. These three must ship visible; flipping them off is the user's call
-        // at runtime, never the default's.
-        const defaultOn = (id) => new RegExp(`\\{ id: '${id}'[^}]*defaultOn: true`).test(featSrc);
-        check('knowledge-visibility modules default ON (report, codeindex, dochub)',
-            defaultOn('report') && defaultOn('codeindex') && defaultOn('dochub'));
-        // Graphify is an extra the owner switches on, not part of the trio — and it shipped
-        // ON, which also meant existing installs had the tab pushed into their stored module
-        // list on next load (features.js merges new defaultOn ids into localStorage).
-        check('graphify ships OFF, as an opt-in module', !defaultOn('graphify'));
-
-        // The registry checks above are text-level and said nothing about whether a switch
-        // actually switches. It did not: storing enablement as presence-in-a-list made
-        // absence mean both "the user turned this off" and "this module is newer than the
-        // saved choice", so the merge step handed every defaultOn module straight back and
-        // unchecking Report, Codebase Index or Document Hub was a no-op that survived
-        // reloads. Run the real module against a localStorage stub rather than assert on its
-        // source. It is a browser .js and this package is not type:module, so it is copied to
-        // a temp .mjs with its one i18n import stubbed — nothing below calls t().
-        {
-            const probeDir = fs.mkdtempSync(path.join(tmpRoot, 'featprobe-'));
-            const probe = path.join(probeDir, 'features.probe.mjs');
-            fs.writeFileSync(probe, featSrc.replace(/^import \{ t \} from '\.\.\/i18n\.js';$/m, 'const t = (k) => k;'));
-
-            const store = new Map();
-            const saved = { localStorage: globalThis.localStorage, window: globalThis.window, document: globalThis.document };
-            globalThis.localStorage = {
-                getItem: k => (store.has(k) ? store.get(k) : null),
-                setItem: (k, v) => store.set(k, String(v)),
-                removeItem: k => store.delete(k)
-            };
-            globalThis.window = {};
-            globalThis.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
-            try {
-                const mod = await import(pathToFileURL(probe).href);
-                const on = () => mod.enabledModules().slice().sort().join(',');
-
-                // The default set names every defaultOn module; Skills joined it on 2026-11-04 (the
-                // Skills page, canonical architecture item 9), so it is part of every expected set here.
-                check('modules: no stored choice yields the defaults', on() === 'codeindex,council,dochub,report,research,skills', on());
-
-                globalThis.window.toggleModule('report', false);
-                check('modules: switching Report off actually switches it off', on() === 'codeindex,council,dochub,research,skills', on());
-                // The regression was only visible on the NEXT read, so re-read rather than
-                // trusting the value the handler happened to return.
-                check('modules: Report stays off across a reload', on() === 'codeindex,council,dochub,research,skills', on());
-
-                globalThis.window.toggleModule('dochub', false);
-                globalThis.window.toggleModule('council', false);
-                globalThis.window.toggleModule('research', false);
-                globalThis.window.toggleModule('skills', false);
-                check('modules: every defaultOn module can be switched off', on() === 'codeindex', on());
-
-                globalThis.window.toggleModule('report', true);
-                check('modules: switching one back on leaves the others off', on() === 'codeindex,report', on());
-
-                // A module added after the user saved a choice must still arrive at its
-                // default — the one thing the old bare-array form got right, so a fix that
-                // simply obeys storage verbatim would break it.
-                store.set('plutos-modules', JSON.stringify({ on: ['codeindex'], known: ['codeindex'] }));
-                check('modules: a module the user never saw still gets its default',
-                    on() === 'codeindex,council,dochub,report,research,skills', on());
-                // Same for storage written by an older build, which had no `known` half.
-                store.set('plutos-modules', JSON.stringify(['report', 'codeindex']));
-                store.set('plutos-modules', JSON.stringify({ on: ['codeindex', 'codeburn'], known: ['codeindex', 'codeburn'] }));
-                check('modules: the AI costs page switched on under its old id stays on', mod.enabledModules().includes('costs'), on());
-                store.set('plutos-modules', JSON.stringify(['report', 'codeindex']));
-                check('modules: storage from an older build still upgrades cleanly',
-                    on() === 'codeindex,council,dochub,report,research,skills', on());
-            } finally {
-                globalThis.localStorage = saved.localStorage;
-                globalThis.window = saved.window;
-                globalThis.document = saved.document;
-            }
-        }
-
         // showToast(msg, isError) is a boolean API, but 29 call sites across nine modules
         // pass a variant string; every non-empty string is truthy, so success toasts painted
         // themselves red. The function now accepts either form — this fails if that is undone.
@@ -3438,29 +3175,14 @@ for (let i = 0; i < n; i++) {
         }
     }
 
-    // Graphify's routes must obey the same project contract as every other route: reads
-    // answer empty, writes refuse with needsProject. Declared in lib/route-policy.mjs rather
-    // than guarded per handler — the 2026-08-23 fix that moved thirty-six routes to one choke
-    // point. Undeclared, they answered 400 with a shape nothing else in the API returns.
+    // Generated graphs and indexes are kept out of the user's git status (lib/workspaces.mjs).
     {
-        const { routeNeedsProject, PROJECT_WRITE_ROUTES } = await import('../lib/route-policy.mjs');
-        check('the AI costs ledger needs an open project', routeNeedsProject('GET /api/usage'));
-        check('graphify read routes are declared project-scoped',
-            routeNeedsProject('GET /api/graphify'));
-        check('graphify write routes refuse loudly rather than silently',
-            PROJECT_WRITE_ROUTES.has('POST /api/graphify/scan')
-            && PROJECT_WRITE_ROUTES.has('POST /api/graphify/clean'));
-
         const { MACHINE_IGNORES } = await import('../lib/workspaces.mjs');
         check('generated graphs are kept out of the user\'s git status',
             MACHINE_IGNORES.includes('graphify-out/'), MACHINE_IGNORES.join(' '));
         check('generated indexes too: the Obsidian shards name this machine\'s absolute paths',
             ['docs/ai/CODEINDEX.md', 'docs/ai/codeindex/', 'docs/ai/OBSIDIAN_INDEX.md', 'docs/ai/obsidian/'].every(e => MACHINE_IGNORES.includes(e)),
             MACHINE_IGNORES.join(' '));
-
-        const dashSrc = fs.readFileSync(path.join(__dirname, 'dashboard.mjs'), 'utf8');
-        check('graphify clean has no destructive default mode',
-            !/searchParams\.get\('mode'\)\s*\|\|\s*'all'/.test(dashSrc));
     }
 
     // 5z1c. The owner can assign work from the dashboard. Until this endpoint the board was
@@ -3567,22 +3289,6 @@ for (let i = 0; i < n; i++) {
             readIdeas(docsProbe).rel === 'docs/IDEAS.md', readIdeas(docsProbe).rel);
     }
 
-    // 5z1d. The story deck is the one output written for the OWNER to read, so its chrome
-    // follows the requested language while everything else in the product stays English.
-    // The slide text itself is the AI's recorded sentence and is never machine-translated.
-    {
-        const { renderDeckHtml, renderDeckMarkdown, buildDeck } = await import('../lib/deck.mjs');
-        const deck = buildDeck(projectDir);
-        check('deck chrome is English by default', /the story so far/.test(renderDeckMarkdown(deck)));
-        check('deck chrome follows the requested language', /buraya kadarki hikâye/.test(renderDeckMarkdown(deck, 'tr')));
-        const trHtml = renderDeckHtml(deck, 'tr');
-        check('deck page declares the language it rendered in', /<html lang="tr"/.test(trHtml));
-        check('an unknown language falls back to English, never blanks',
-            /<html lang="en"/.test(renderDeckHtml(deck, 'zz')) && /THE STORY SO FAR/.test(renderDeckHtml(deck, 'zz')));
-        const served = await get('/deck?lang=tr').catch(() => null);
-        check('GET /deck honours ?lang', typeof served === 'string' ? /lang="tr"/.test(served) : true);
-    }
-
     // 5z1e. Readiness stages. A verdict on a project nobody has read is a guess wearing a
     // verdict's clothes — the intake step existed, but nothing said that review and
     // comparison DEPEND on it. Stages are derived from evidence on disk, never a stored flag.
@@ -3618,18 +3324,8 @@ for (let i = 0; i < n; i++) {
     // after the package said 0.1.0-beta, which is exactly the kind of drift nobody notices.
     const pkgVersion = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
     const uiHtml = fs.readFileSync(path.join(__dirname, 'dashboard-ui.html'), 'utf8');
-    // Two places print it — the system bar and the boot splash's kernel line. Counting both
-    // is the point: the boot screen sat at "v1.0" long after the package said 0.1.0-beta,
-    // and a check that only proves ONE of them is current would have passed anyway.
-    const versionMentions = uiHtml.split(`>v${pkgVersion}<`).length - 1;
-    check('system bar AND boot splash both show package.json version', versionMentions >= 2,
-        `found ${versionMentions} mention(s) of v${pkgVersion}`);
+    check('the system bar shows the package.json version', uiHtml.includes(`>v${pkgVersion}<`), `v${pkgVersion}`);
     check('no stale hardcoded version left in the UI', !/>v1\.0</.test(uiHtml));
-    // The subtitle's exact wording is a design choice the owner has already changed once
-    // ("Local PC app" -> "AI Operating System"); pinning the string here just breaks the
-    // suite the next time it is reworded. What must not regress is the positioning claim,
-    // and that is asserted where it actually lives — the README and GUIDE checks below.
-    check('boot splash carries a subtitle', /boot-sub">[^<]+</.test(uiHtml));
     {
         const readme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
         check('README says the dashboard binds to 127.0.0.1', /127\.0\.0\.1/.test(readme));
@@ -3641,15 +3337,13 @@ for (let i = 0; i < n; i++) {
         check('GUIDE leads with portable PC app, terminal optional', /local PC app/i.test(guide) && /build:app/.test(guide) && /Terminal \(optional\)/.test(guide));
     }
 
-    // The mark (favicon, boot splash) is one design in two places, and the sidebar draws the live
-    // version of it: a mismatch would mean an update to one silently drifted from the others.
+    // The shell carries no decoration (owner decision d-51e97352b22e): no boot splash, no live
+    // orbit, no gradients, glass or glow in the page or its stylesheet.
     {
-        const favicon = decodeURIComponent(uiHtml.match(/rel="icon" href="([^"]+)"/)[1]);
-        const boot = (uiHtml.match(/<svg class="boot-mark"[\s\S]*?<\/svg>/) || [''])[0];
-        const geometry = m => m.includes('rotate(-24 50 50)') && m.includes('rotate(24 50 50)') && /<circle cx="50" cy="50" r="21"/.test(m);
-        check('the favicon and the boot mark draw the same planet and two orbits', geometry(favicon) && geometry(boot), favicon.slice(0, 120));
-        check('the sidebar mark is the live orbit', /<canvas class="brand-logo brand-orbit" data-orbit="mini"/.test(uiHtml));
-        check('the Home hero is the live orbit', /data-orbit="hero"/.test(uiHtml));
+        const css = fs.readFileSync(path.join(__dirname, 'ui', 'styles.css'), 'utf8');
+        check('no boot splash and no orbit in the shell', !/boot-splash|data-orbit|brand-orbit/.test(uiHtml));
+        check('no gradient, blur or glow in the page or its stylesheet',
+            !/gradient\(|backdrop-filter|box-shadow:\s*0 0 \d/.test(uiHtml + css));
     }
 
     // 5z2. The local protections, as pure functions (lib/auth.mjs): these carry the security

@@ -77,6 +77,22 @@ try {
         const brief = await rpc('tools/call', { name: 'session_start', arguments: { ai: 'TokenBudget' } });
         const briefText = (brief.result?.content || []).map(c => c.text || '').join('');
         if (!briefText || brief.result?.isError) throw new Error('session_start failed: ' + briefText.slice(0, 200));
+        // The brief is paged (d-821d5722b32a): part 1 is what every session reads, part 2 holds the
+        // full working agreement. Both are budgeted, so moving text out of part 1 cannot hide growth.
+        const brief2 = await rpc('tools/call', { name: 'session_start', arguments: { ai: 'TokenBudget', part: 2 } });
+        const brief2Text = (brief2.result?.content || []).map(c => c.text || '').join('');
+        if (!brief2Text || brief2.result?.isError) throw new Error('session_start part 2 failed: ' + brief2Text.slice(0, 200));
+        // Every later part too, summed: once part 2 is full, new brief text moves on to part 3, and
+        // budgeting parts 1 and 2 alone would let the whole brief grow unseen.
+        const partCount = Number((briefText.match(/Brief part 1 of (\d+)/) || [])[1] || 1);
+        const laterTexts = [];
+        for (let n = 3; n <= partCount; n++) {
+            const page = await rpc('tools/call', { name: 'session_start', arguments: { ai: 'TokenBudget', part: n } });
+            const text = (page.result?.content || []).map(c => c.text || '').join('');
+            if (!text || page.result?.isError) throw new Error(`session_start part ${n} failed: ` + text.slice(0, 200));
+            laterTexts.push(text);
+        }
+        const placeholders = text => text.split(process.env.PLUTOS_HOME).join('<PLUTOS_HOME>').split(root).join('<PLUTOS_APP>');
 
         const measured = {
             toolDefinitions: tokens(JSON.stringify(tools)),
@@ -86,7 +102,9 @@ try {
             // The brief names the owner's agreement file in the data folder, whose path length
             // differs by machine (a Windows temp folder is longer); count it as a fixed placeholder.
             // So does the install's own folder, which the Scope line names for the project-scissors skill.
-            sessionStartBrief: tokens(briefText.split(process.env.PLUTOS_HOME).join('<PLUTOS_HOME>').split(root).join('<PLUTOS_APP>'))
+            sessionStartBrief: tokens(placeholders(briefText)),
+            sessionStartBriefPart2: tokens(placeholders(brief2Text)),
+            sessionStartBriefAllParts: [briefText, brief2Text, ...laterTexts].reduce((sum, t) => sum + tokens(placeholders(t)), 0)
         };
         const toolCount = tools.length;
         const budget = JSON.parse(fs.readFileSync(budgetFile, 'utf8'));
@@ -100,7 +118,8 @@ try {
             else if (update && value < limit) { budget.budgets[key] = value; lowered = true; }
             else if (value < limit * 0.97) console.log(`            ${key} is ${limit - value} under budget: run with --update to lock the saving in.`);
         }
-        const total = Object.values(measured).reduce((a, b) => a + b, 0);
+        // Parts 2 on are read on demand, not before the first task.
+        const total = Object.entries(measured).filter(([k]) => k !== 'sessionStartBriefPart2' && k !== 'sessionStartBriefAllParts').reduce((a, [, b]) => a + b, 0);
         console.log(`  total ${total} tokens before the first task`);
         // chars/4 under-counts Claude: Claude Code reported the 1,670-token AGENTS.md as 2.5k (2026-10-27).
         console.log(`  about ${Math.round(total * 1.45)} by Claude's count (x1.45); Claude Code defers the tools, so it pays about ${Math.round((total - measured.toolDefinitions) * 1.45)} plus the tool names`);

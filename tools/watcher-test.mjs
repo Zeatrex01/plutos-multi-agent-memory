@@ -2,7 +2,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import http from 'node:http';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 
@@ -27,17 +26,16 @@ fs.mkdirSync(projectB);
 fs.writeFileSync(path.join(projectA, 'package.json'), '{"type":"module"}\n');
 const rootA = fs.realpathSync(projectA);
 const rootB = fs.realpathSync(projectB);
-const task = { agent: 'owner', status: 'TODO', title: 'Only project A work', fields: { Assignee: 'Claude' } };
-let response = { projectRoot: rootA, entries: [task] };
-let status = 200;
-const requests = [];
-const server = http.createServer((req, res) => {
-    requests.push(new URL(req.url, 'http://localhost'));
-    res.writeHead(status, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(response));
-});
-await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const port = server.address().port;
+const task = { agent: 'owner', status: 'TODO', title: 'Only project A work', assignee: 'Claude' };
+// The hook reads BOARD.md itself; no dashboard runs anywhere in this test.
+const boardFile = root => path.join(root, 'docs', 'handoff', 'BOARD.md');
+function writeBoard(root, entries) {
+    fs.mkdirSync(path.dirname(boardFile(root)), { recursive: true });
+    fs.writeFileSync(boardFile(root), '# BOARD\n\n' + entries.map(e =>
+        `### ${e.agent} · ${e.status} · ${e.title}\n- **Task:** do it\n- **Assignee:** ${e.assignee}\n`).join('\n'));
+}
+writeBoard(projectA, [task]);
+writeBoard(projectB, [{ ...task, title: 'Foreign project B task' }]);
 const settingsFile = watcher.claudeSettingsPath(projectA);
 const readSettings = () => JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
 const ownHandler = () => readSettings().hooks.Stop.flatMap(group => group.hooks)
@@ -48,7 +46,7 @@ function run(payload = { cwd: rootA }, extraEnv = {}) {
     return new Promise((resolve, reject) => {
         const child = spawn(handler.command, handler.args, {
             cwd: projectA,
-            env: { ...process.env, PLUTOS_AGENT: 'Claude', PLUTOS_BOARD_URL: '', ...extraEnv },
+            env: { ...process.env, PLUTOS_AGENT: 'Claude', ...extraEnv },
             stdio: ['pipe', 'pipe', 'pipe']
         });
         let stderr = '';
@@ -78,7 +76,7 @@ try {
     }));
     const old = watcher.watcherStatus(projectA);
     check('unbound legacy watcher requires upgrade', old.needsUpgrade && !old.installed);
-    const enabled = watcher.setWatcher(projectA, true, { agent: 'Claude', port });
+    const enabled = watcher.setWatcher(projectA, true, { agent: 'Claude' });
     check('re-enable upgrades to a healthy Node hook', enabled.installed && !enabled.needsUpgrade);
     check('legacy script is removed during upgrade', !fs.existsSync(legacy));
     check('generated script has an explicit CommonJS extension', watcher.watcherScriptPath(projectA).endsWith('.cjs'));
@@ -90,63 +88,44 @@ try {
     const foreignSettings = readSettings();
     check('upgrade preserves unrelated settings and events', foreignSettings.permissions.allow[0] === 'Read'
         && foreignSettings.hooks.SessionEnd[0].hooks[0].command === 'other-event.sh');
-    const repeated = watcher.setWatcher(projectA, true, { agent: 'Claude', port });
+    const repeated = watcher.setWatcher(projectA, true, { agent: 'Claude' });
     check('repeated install does not duplicate or report changes', readSettings().hooks.Stop.length === 3 && !repeated.changed);
-    const retargeted = watcher.setWatcher(projectA, true, { agent: 'Alternate', port });
+    const retargeted = watcher.setWatcher(projectA, true, { agent: 'Alternate' });
     check('agent-only script update reports its change', retargeted.changed
         && fs.readFileSync(watcher.watcherScriptPath(projectA), 'utf8').includes('"agent": "Alternate"'));
-    watcher.setWatcher(projectA, true, { agent: 'Claude', port });
+    watcher.setWatcher(projectA, true, { agent: 'Claude' });
 
     let result = await run();
     check('actual installed command runs from a module project with spaces and metacharacters', result.code === 2);
     check('same-project TODO is delivered', result.stderr.includes(task.title));
-    check('request names the installed canonical source project', requests.at(-1).pathname === '/api/board'
-        && requests.at(-1).searchParams.get('project') === rootA);
+    const body = fs.readFileSync(watcher.watcherScriptPath(projectA), 'utf8');
+    check('the hook no longer depends on the dashboard', !body.includes('/api/board') && !body.includes('fetch(')
+        && !body.includes('127.0.0.1') && !body.includes('POST'));
+    check('the hook imports the one board library', body.includes(JSON.stringify(watcher.BOARD_LIB)) && fs.existsSync(watcher.BOARD_LIB));
     const alias = path.join(temp, 'project A alias');
     fs.symlinkSync(rootA, alias, process.platform === 'win32' ? 'junction' : 'dir');
-    response = { projectRoot: alias, entries: [task] };
     check('canonical aliases identify the same project and hook cwd', (await run({ cwd: alias })).code === 2);
     check('status through an alias recognizes the canonical installation', watcher.watcherStatus(alias).installed);
-    watcher.setWatcher(alias, true, { agent: 'Claude', port });
+    watcher.setWatcher(alias, true, { agent: 'Claude' });
     check('installing through an alias still records the canonical source', ownHandler().args[0] === watcher.watcherScriptPath(rootA));
-    response = { projectRoot: rootA, entries: [task] };
-    result = await run({ cwd: rootA }, { PLUTOS_BOARD_URL: `http://127.0.0.1:${port}/api/board?project=${encodeURIComponent(rootB)}` });
-    check('URL override cannot change the installed project query', result.code === 2
-        && requests.at(-1).searchParams.get('project') === rootA);
 
-    response = { projectRoot: rootB, entries: [{ ...task, title: 'Foreign project B task' }] };
-    result = await run();
-    check('foreign board identity is refused without leaking its task', result.code === 0 && result.stderr === '');
-    response = { entries: [task] };
-    check('legacy response without project identity fails closed', (await run()).code === 0);
-    response = { projectRoot: '.', entries: [task] };
-    check('relative response identity fails closed', (await run()).code === 0);
-    response = { projectRoot: path.join(temp, 'missing'), entries: [task] };
-    check('missing response root fails closed', (await run()).code === 0);
-    response = { projectRoot: rootA, entries: [task] };
-    status = 404;
-    check('unregistered project HTTP failure cannot deliver work', (await run()).code === 0);
-    status = 200;
-
-    let count = requests.length;
-    check('foreign hook cwd fails closed', (await run({ cwd: rootB })).code === 0);
-    check('foreign hook cwd is rejected before contacting the dashboard', requests.length === count);
+    check('foreign hook cwd fails closed without leaking its task', await run({ cwd: rootB }).then(r => r.code === 0 && r.stderr === ''));
     check('relative hook cwd is refused', (await run({ cwd: '.' })).code === 0);
-    check('recursive Stop hook exits before contacting the dashboard', (await run({ cwd: rootA, stop_hook_active: true })).code === 0
-        && requests.length === count);
-    check('malformed input fails closed', (await run('invalid json')).code === 0 && requests.length === count);
-    check('non-object payload fails closed', (await run('[]')).code === 0 && requests.length === count);
-    check('missing cwd still requires a verified response identity', (await run({})).code === 2);
-    response = { projectRoot: rootA, entries: {} };
-    check('malformed entries cannot crash the generated hook', (await run()).code === 0);
-    response = { projectRoot: rootA, entries: [{ ...task, status: 'DONE' }] };
+    check('recursive Stop hook exits', (await run({ cwd: rootA, stop_hook_active: true })).code === 0);
+    check('malformed input fails closed', (await run('invalid json')).code === 0);
+    check('non-object payload fails closed', (await run('[]')).code === 0);
+    check('missing cwd reads the installed project board', (await run({})).code === 2);
+    writeBoard(projectA, [{ ...task, status: 'DONE' }]);
     check('completed task does not block stopping', (await run()).code === 0);
-    response = { projectRoot: rootA, entries: [{ ...task, fields: { Assignee: 'Gemini' } }] };
+    writeBoard(projectA, [{ ...task, assignee: 'Gemini' }]);
     check('another seat cannot keep this watcher running', (await run()).code === 0);
-    response = { projectRoot: rootA, entries: [task] };
-    check('unreachable dashboard cannot keep a session running', (await run({ cwd: rootA }, {
-        PLUTOS_BOARD_URL: 'http://127.0.0.1:9/api/board'
-    })).code === 0);
+    fs.rmSync(boardFile(projectA));
+    check('a missing board cannot keep a session running', (await run()).code === 0);
+    fs.writeFileSync(path.join(projectA, 'BOARD.md'), `### owner · TODO · Root board work\n- **Assignee:** Claude\n`);
+    result = await run();
+    check('a root BOARD.md is read like the library reads it', result.code === 2 && result.stderr.includes('Root board work'));
+    fs.rmSync(path.join(projectA, 'BOARD.md'));
+    writeBoard(projectA, [task]);
 
     const script = watcher.watcherScriptPath(projectA);
     const before = fs.readFileSync(script, 'utf8');
@@ -157,9 +136,9 @@ try {
     };
     fs.writeFileSync(script, "fetch('http://127.0.0.1:3040/api/board');\n");
     check('existing unbound cjs body requires upgrade', needsUpgrade());
-    fs.writeFileSync(script, before.replace('if (watcherProjectKey(board?.projectRoot) !== PROJECT_KEY) process.exit(0);', ''));
+    fs.writeFileSync(script, before.replace('if (payload.stop_hook_active === true) process.exit(0);', ''));
     check('modified behavior cannot pass by retaining generated defaults', needsUpgrade());
-    fs.writeFileSync(script, watcher.watcherScript('Claude', port, rootB));
+    fs.writeFileSync(script, watcher.watcherScript('Claude', rootB));
     check('otherwise current script bound to another root requires upgrade', needsUpgrade());
     const inspectionMarker = path.join(temp, 'status-must-not-execute');
     fs.writeFileSync(script, `require('node:fs').writeFileSync(${JSON.stringify(inspectionMarker)}, 'unsafe');\n`);
@@ -174,12 +153,12 @@ try {
         fs.writeFileSync(settingsFile, JSON.stringify(duplicateSettings));
         check(extra.command === 'node' ? 'duplicate current hooks require upgrade' : 'coexisting legacy hook requires upgrade', needsUpgrade());
     }
-    const repaired = watcher.setWatcher(projectA, true, { agent: 'Claude', port });
+    const repaired = watcher.setWatcher(projectA, true, { agent: 'Claude' });
     check('re-enable repairs stale duplicates without losing foreign handlers', repaired.installed && !repaired.needsUpgrade
         && readSettings().hooks.Stop.length === 3 && readSettings().hooks.Stop[0].hooks[0].command === foreign.command);
     for (const invalid of ['{not json', '{"hooks":{"Stop":{}}}']) {
         fs.writeFileSync(settingsFile, invalid);
-        assert.throws(() => watcher.setWatcher(projectA, true, { agent: 'Changed', port }));
+        assert.throws(() => watcher.setWatcher(projectA, true, { agent: 'Changed' }));
         assert.equal(fs.readFileSync(settingsFile, 'utf8'), invalid);
         assert.equal(fs.readFileSync(script, 'utf8'), before);
     }
@@ -196,19 +175,18 @@ try {
     const git = (...args) => execFileSync('git', args, { cwd: projectC, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     git('init', '-q');
     const ignoreLines = () => fs.readFileSync(path.join(projectC, '.gitignore'), 'utf8').split(/\r?\n/);
-    const first = watcher.setWatcher(projectC, true, { agent: 'Claude', port });
+    const first = watcher.setWatcher(projectC, true, { agent: 'Claude' });
     check('a git project ignores the hook and the script by their exact paths', first.ignored && first.warning === null
         && watcher.WATCHER_FILES.every(entry => ignoreLines().filter(line => line === entry).length === 1));
-    const again = watcher.setWatcher(projectC, true, { agent: 'Claude', port });
+    const again = watcher.setWatcher(projectC, true, { agent: 'Claude' });
     check('a repeat install adds no second ignore line and reports no change', !again.ignored && !again.changed
         && ignoreLines().filter(line => line === '.plutos/plutos-watcher.cjs').length === 1);
     git('add', '-f', '.plutos/plutos-watcher.cjs');
-    const tracked = watcher.setWatcher(projectC, true, { agent: 'Claude', port });
+    const tracked = watcher.setWatcher(projectC, true, { agent: 'Claude' });
     check('a script git already tracks is reported and left tracked', !tracked.changed
         && /git rm --cached \.plutos\/plutos-watcher\.cjs/.test(tracked.warning || '')
         && git('ls-files', '.plutos/plutos-watcher.cjs').trim() === '.plutos/plutos-watcher.cjs');
     console.log(`\n${passed} passed, 0 failed`);
 } finally {
-    await new Promise(resolve => server.close(resolve));
     fs.rmSync(temp, { recursive: true, force: true });
 }

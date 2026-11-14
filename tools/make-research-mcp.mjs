@@ -59,7 +59,7 @@ const copy = (from, to = from) => {
     fs.mkdirSync(path.dirname(path.join(OUT, to)), { recursive: true });
     fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
 };
-for (const f of ['store.mjs', 'fetch.mjs', 'mcp.mjs', 'routes.mjs', 'scrapling_bridge.py']) copy(`lib/research/${f}`);
+for (const f of ['store.mjs', 'quote.mjs', 'fetch.mjs', 'mcp.mjs', 'routes.mjs', 'scrapling_bridge.py']) copy(`lib/research/${f}`);
 copy('lib/atomic.mjs');
 copy('lib/client-process.mjs');
 copy('LICENSE');

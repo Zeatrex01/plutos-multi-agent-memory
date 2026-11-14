@@ -79,7 +79,7 @@ try {
         await client.connect(transport);
         const tools = await client.listTools();
         const schema = tools.tools.find(tool => tool.name === 'board_update').inputSchema.properties;
-        check('MCP advertises outcome, evidence and revision fields', schema.verification.enum.includes('passed') && schema.evidence && schema.expectedRevision);
+        check('MCP advertises outcome, evidence and revision fields', schema.extra.properties.verification.enum.includes('passed') && schema.evidence && schema.expectedRevision);
         const noEvidence = await client.callTool({ name: 'board_update', arguments: { agent: 'worker', status: 'DONE', title: 'Review me', verification: 'passed' } });
         check('real MCP rejects passed claims without evidence', noEvidence.isError && /requires/.test(noEvidence.content[0].text));
         const read = await client.callTool({ name: 'board_read', arguments: {} });
@@ -131,36 +131,41 @@ try {
     context.lucide = { createIcons() {} };
     context.window.switchView = name => { view = name; };
     context.window.activeWorkspacePath = project;
-    const returnSource = fs.readFileSync(path.join(root, 'ui', 'modules', 'return-summary.js'), 'utf8');
-    vm.runInContext(`{ ${returnSource.match(/^const text = .*$/m)[0]} ${returnSource.match(/export function returnProjectKey\(value\) \{[\s\S]*?\n\}/)[0].replace('export ', '')} globalThis.returnProjectKey = returnProjectKey; }`, context);
+    // board.js imports returnProjectKey from ui/modules/project-key.js; load it the same way.
+    const keySource = fs.readFileSync(path.join(root, 'ui', 'modules', 'project-key.js'), 'utf8').replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
+    vm.runInContext(`{ ${keySource} globalThis.returnProjectKey = returnProjectKey; }`, context);
     const fixtures = {
         '/api/board': { exists: true, project: 'project', projectRoot: project, updatedAt: new Date().toISOString(), entries: [focusedEntry] },
         '/api/board?board=agents': { exists: true, projectRoot: project, entries: [] },
         '/api/roster': { agents: [] }, '/api/hygiene': null, '/api/ideas': null
     };
     context.fetch = async url => ({ json: async () => fixtures[url] });
-    context.knownClientColor = () => null;   // ui/modules/orbit.js, imported by board.js
     vm.runInContext(boardSource, context);
-    await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project);
-    check('focus helper opens and scrolls the exact quoted task through the actual router name', view === 'board' && opened && focused);
-    check('focus helper distinguishes same-title tasks assigned to the same owner', !wrongFocused);
-    focused = false;
-    context.window.activeWorkspacePath = path.join(temp, 'another-project');
-    await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project);
-    check('focus helper refuses an old summary after the selected project changes', !focused && toasts.at(-1) === 'return_summary_outdated');
-    context.window.activeWorkspacePath = project;
-    const normalFetch = context.fetch;
-    context.fetch = async url => {
+    // The focus helper outlived its Home caller; while board.js keeps it, it must stay project-safe.
+    if (typeof context.window.focusBoardTask === 'function') {
+        await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project);
+        check('focus helper opens and scrolls the exact quoted task through the actual router name', view === 'board' && opened && focused);
+        check('focus helper distinguishes same-title tasks assigned to the same owner', !wrongFocused);
+        focused = false;
         context.window.activeWorkspacePath = path.join(temp, 'another-project');
-        return normalFetch(url);
-    };
-    await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project);
-    check('focus helper rechecks the selected project after its asynchronous refresh', !focused && toasts.at(-1) === 'return_summary_outdated');
-    context.fetch = normalFetch;
-    context.window.activeWorkspacePath = project;
-    if (process.platform === 'win32') {
-        await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project.toUpperCase().replaceAll('\\', '/') + '/');
-        check('focus helper accepts equivalent Windows project spelling', focused);
+        await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project);
+        check('focus helper refuses an old summary after the selected project changes', !focused && /_outdated$/.test(toasts.at(-1) || ''));
+        context.window.activeWorkspacePath = project;
+        const normalFetch = context.fetch;
+        context.fetch = async url => {
+            context.window.activeWorkspacePath = path.join(temp, 'another-project');
+            return normalFetch(url);
+        };
+        await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project);
+        check('focus helper rechecks the selected project after its asynchronous refresh', !focused && /_outdated$/.test(toasts.at(-1) || ''));
+        context.fetch = normalFetch;
+        context.window.activeWorkspacePath = project;
+        if (process.platform === 'win32') {
+            await context.window.focusBoardTask('main', focusedEntry.agent, focusedEntry.title, project.toUpperCase().replaceAll('\\', '/') + '/');
+            check('focus helper accepts equivalent Windows project spelling', focused);
+        }
+    } else {
+        await context.fetchBoard();
     }
     const control = (id, value, revision) => ({ id, value, closest: () => ({ dataset: { revision } }) });
     let draftFields = [control('verification-state', 'passed', focusedEntry.revision), control('verification-evidence', 'docs/old-review.md', focusedEntry.revision)];

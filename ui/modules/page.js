@@ -1,9 +1,5 @@
-// The page frame's moving parts, shared by every view ("the panels do not
-// explain themselves"). Each page opens with the same head in dashboard-ui.html (.page-head: title,
-// one line on what the page is for, its actions) and a "How this page works" fold; anything empty
-// says why and what fills it, through emptyState() below. A next step the owner takes through their
-// AI is a sentence they can copy (askLine), not a command line; a terminal command, when there is
-// one, is folded away (commandLine), because most owners never need it.
+// Shared page helpers: copy-to-clipboard for [data-copy] buttons, and the empty state every page
+// uses (what is missing, why, and at most one way forward).
 import { t } from '../i18n.js';
 import { escHtml } from '../esc.js';
 import { showToast } from './toast.js';
@@ -61,27 +57,4 @@ export function emptyState({ icon = 'inbox', title, text = '', action = null, as
             ${command ? commandLine(command) : ''}
         </div>
     </div>`;
-}
-
-// "How this page works" is open the first time a page is seen on a computer (closed on a phone) and
-// stays the way the owner leaves it.
-const HELP_KEY = 'plutos-help-closed';
-function closedHelp() {
-    try { return new Set(JSON.parse(localStorage.getItem(HELP_KEY) || '[]')); } catch { return new Set(); }
-}
-
-export function initPageHelp() {
-    const closed = closedHelp();
-    // On a phone the open fold would fill the first screen, so there it starts closed: one tap opens it.
-    const phone = window.matchMedia?.('(max-width: 640px)').matches;
-    document.querySelectorAll('details.page-help[data-help]').forEach(fold => {
-        // A page whose own content already guides the first step starts with the fold closed.
-        const startsClosed = fold.dataset.helpDefault === 'closed';
-        fold.open = !phone && !startsClosed && !closed.has(fold.dataset.help);
-        fold.addEventListener('toggle', () => {
-            const now = closedHelp();
-            if (fold.open) now.delete(fold.dataset.help); else now.add(fold.dataset.help);
-            try { localStorage.setItem(HELP_KEY, JSON.stringify([...now])); } catch { /* storage blocked: it opens again next time */ }
-        });
-    });
 }

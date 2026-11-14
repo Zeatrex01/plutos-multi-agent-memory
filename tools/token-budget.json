@@ -1,10 +1,20 @@
 {
   "note": "Per-session token cost ceilings, chars/4. Lower with --update; never raise without a reason in the commit message.",
-  "measuredAt": "2026-11-04",
+  "measuredAt": "2026-11-14",
   "budgets": {
-    "toolDefinitions": 3499,
-    "agentsMd": 1353,
-    "sessionStartBrief": 754,
-    "serverInstructions": 162
+    "toolDefinitions": 2745,
+    "agentsMd": 1426,
+    "sessionStartBrief": 366,
+    "serverInstructions": 222,
+    "sessionStartBriefPart2": 689,
+    "sessionStartBriefAllParts": 1055
+  },
+  "reasons": {
+    "sessionStartBrief": "2026-11-14 806 -> 892: drawer tool map in the brief (feedback 2026-11-14 item 1.2; 4 lines, 343 chars); 2026-11-14 892 -> 974: task-shaped drawer summaries in the tool map (+152 chars) and two working-agreement rules, tools before agents and no silent shortcut (+175 chars) (feedback 2026-11-14 section 2 items 3 and 4); 2026-11-14 974 -> 945: plan 2026-11-14 section 3 MCP trim: agent_register, roster_read, project_deck, plutos_system_status cut; status_report, project_snapshot, plutos_usage to admin; code drawer removed; board_update extra; short session_end schema; 2026-11-14 945 -> 232: brief paged under a 3,500-character part 1 (d-821d5722b32a); full working agreement in part 2; 2026-11-14 232 -> 366: part 1 carries What this is, Project readiness and Scope while they fit, so a session that never reads part 2 still meets Rule 1 in an unmapped project (critique of d-821d5722b32a, finding 1); the same blocks left part 2 (823 -> 689)",
+    "serverInstructions": "2026-11-14 162 -> 241: task-to-tool map and the plutos_project_info fix pointer (feedback 2026-11-14 items 1 and 14); 2026-11-14 241 -> 222: plan 2026-11-14 section 3 MCP trim: agent_register, roster_read, project_deck, plutos_system_status cut; status_report, project_snapshot, plutos_usage to admin; code drawer removed; board_update extra; short session_end schema",
+    "toolDefinitions": "2026-11-14 3597 -> 3635: drawer summaries reworded as tasks in the plutos_modules description (feedback 2026-11-14 section 2 item 3; +152 chars); 2026-11-14 3635 -> 2745: plan 2026-11-14 section 3 MCP trim: agent_register, roster_read, project_deck, plutos_system_status cut; status_report, project_snapshot, plutos_usage to admin; code drawer removed; board_update extra; short session_end schema",
+    "agentsMd": "2026-11-14 1353 -> 1426: Tools before agents line in AGENTS.md (feedback 2026-11-14 section 2 item 2; sub-agents spent long runs on look-ups a tool answers)",
+    "sessionStartBriefPart2": "2026-11-14 new at 823: part 2 of the paged brief (d-821d5722b32a), the full working agreement and the sections that left part 1; read on demand via session_start {part: 2}; 2026-11-14 823 -> 689: What this is, Project readiness and Scope moved to part 1",
+    "sessionStartBriefAllParts": "2026-11-14 new at 1055: every part of the paged brief summed, so text that moves on to part 3 or later still counts (critique of d-821d5722b32a, finding 6)"
   }
 }

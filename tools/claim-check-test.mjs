@@ -11,6 +11,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { checkClaims, claimLog, stopHook } from '../lib/claim-check.mjs';
 import { recordPass, workingTree } from '../lib/push-gate.mjs';
+import { recordChecks } from '../lib/project-checks.mjs';
 import { housekeeping } from '../lib/hygiene.mjs';
 
 const script = fileURLToPath(new URL('../lib/claim-check.mjs', import.meta.url));
@@ -161,6 +162,51 @@ try {
         assert.equal(run({ session_id: 's3', cwd: repo, transcript_path: transcript }).decision, 'block');
         assert.deepEqual(run({ session_id: 's4', cwd: repo, last_assistant_message: 'Read the board.' }), {});
         assert.deepEqual(JSON.parse(spawnSync(process.execPath, [script], { input: 'not json', encoding: 'utf8' }).stdout), {});
+    });
+    check('with declared checks, "done" or "fixed" needs a recorded pass on this tree and no failed check; nothing is run', () => {
+        const proj = path.join(scratch, 'declared');
+        fs.mkdirSync(proj);
+        sh(proj, 'init', '-q', '-b', 'main');
+        commit(proj, 'x.txt', 'x');
+        const said = 'Fixed the parser. Done.';
+        // No checks.json: "done" alone is not judged on checks.
+        assert.deepEqual(keys(proj, said).filter(k => k === 'checks'), []);
+        // A command the hook must never run: it would leave this file behind.
+        const marker = path.join(scratch, 'check-ran');
+        commit(proj, '.plutos/checks.json', JSON.stringify([{ name: 'arch', command: `node -e "require('fs').writeFileSync(${JSON.stringify(marker)}, '')"`, meaning: 'an untyped reference was added' }]));
+        assert.match(checkClaims(proj, said).find(f => f.key.startsWith('checks:'))?.detail || '', /have not passed on this work\. Run them through the push gate/);
+        // Never run through the gate here: the finding shows the command before the AI runs it.
+        assert.match(checkClaims(proj, said).find(f => f.key.startsWith('checks:'))?.detail || '', /checks\.json is new since[\s\S]*arch: node -e/);
+        // The gate's run recorded a failed check on this tree: the finding names it and its meaning.
+        recordChecks(proj, { tree: workingTree(proj), tests: 'passed', checks: [{ name: 'arch', meaning: 'an untyped reference was added', ok: false }] });
+        assert.match(checkClaims(proj, said).find(f => f.key.startsWith('checks:'))?.detail || '', /declared checks failed on this work:\n {2}arch: an untyped reference was added/);
+        assert.ok(!fs.existsSync(marker), 'the claim check ran a declared check');
+        // A pass on this tree with every check passing holds; a later edit is "an earlier version".
+        recordChecks(proj, { tree: workingTree(proj), tests: 'passed', checks: [{ name: 'arch', meaning: '', ok: true }] });
+        tested(proj);
+        assert.deepEqual(keys(proj, said).filter(k => k === 'checks'), []);
+        write(proj, 'x.txt', 'y');
+        assert.match(checkClaims(proj, 'Bitti.').find(f => f.key.startsWith('checks:'))?.detail || '', /last pass was on an earlier version/);
+        // A message that claims nothing finished is not judged.
+        assert.deepEqual(keys(proj, 'I read the board.'), []);
+    });
+    // `plutos check --accept` wants a terminal, but a pty or a hand edit gets past it: a grown baseline
+    // is named at "done" so the owner sees it (critique seat, 2026-11-14).
+    check('a claims baseline that grew since the last commit is named at "done", unless the message says so', () => {
+        const proj = path.join(scratch, 'baseline');
+        fs.mkdirSync(proj);
+        sh(proj, 'init', '-q', '-b', 'main');
+        commit(proj, '.plutos/claims-baseline.json', JSON.stringify({ accepted: ['paths|a.md|x'] }));
+        tested(proj);
+        assert.deepEqual(keys(proj, 'Done.').filter(k => k === 'baseline'), []);
+        write(proj, '.plutos/claims-baseline.json', JSON.stringify({ accepted: ['paths|a.md|x', 'paths|b.md|y'] }));
+        const found = checkClaims(proj, 'Done.').find(f => f.key.startsWith('baseline:'));
+        assert.match(found?.detail || '', /accepts 1 finding\(s\) that the last commit does not \(paths\|b\.md\|y\)/);
+        assert.deepEqual(keys(proj, 'Done. I accepted b.md into the baseline because it is fixture text.').filter(k => k === 'baseline'), []);
+        assert.deepEqual(keys(proj, 'I read the board.').filter(k => k === 'baseline'), [], 'no claim, no judgment');
+        // A shrinking baseline is fixed debt, not a finding.
+        write(proj, '.plutos/claims-baseline.json', JSON.stringify({ accepted: [] }));
+        assert.deepEqual(keys(proj, 'Done.').filter(k => k === 'baseline'), []);
     });
     console.log(`${checks} claim-check checks passed`);
 } finally {

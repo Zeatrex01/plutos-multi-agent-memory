@@ -29,6 +29,7 @@ export const PRIVATE = [
     'SCOPE.md', // this repository's own queue and appetite, not the product's
     'ARCHITECTURE.md', 'docs/architecture/', 'tools/architecture-docs-test.mjs', // the internals reference a rebuild starts from (not published)
     'docs/superpowers/', // design specs and plans of this repository's own jobs
+    'feedback/', // field reports from the owner's projects (they name customers and private paths)
     'tools/public-repo/', // the seeds of the target's own files, copied only where the target has none
     'tools/memory-probes.json', 'tools/memory-probes-heldout.json', 'tools/memory-probes-third.json', // probes keyed to this repository's record ids
 ];

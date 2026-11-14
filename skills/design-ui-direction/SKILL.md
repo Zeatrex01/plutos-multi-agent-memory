@@ -1,6 +1,6 @@
 ---
 name: design-ui-direction
-description: "Keep a project's screens clear at first glance and in its own design language, not AI defaults: write and follow docs/ai/DESIGN.md, check every screen on its render (one thing to look at, little text, the users' language, no competing contrast, accessibility), catch the common UI mistakes, and run an A/B design pick when the owner asks. Use when building or changing a user interface, when a project with a UI has no DESIGN.md, or for 'this looks generic', 'review this UI', 'A/B this screen'. Apps and games; a game package may add game checks."
+description: "Use when building or reviewing a screen, or when a project with a UI has no docs/ai/DESIGN.md. For apps it applies failure checks only (contrast, accessibility, common UI mistakes) and does not choose the look: the look comes from the owner's picks in DESIGN.md, gathered by a blind A/B design pick it proposes. For games it also sets the direction and tokens and critiques the look; a game package may add game checks. Not for choosing an app's visual style, and not for choosing between finished candidates."
 ---
 # Design UI direction
 

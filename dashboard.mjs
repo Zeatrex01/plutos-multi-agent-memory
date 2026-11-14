@@ -4,7 +4,6 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import { execFileSync, spawn } from 'child_process';
 import { APP_ROOT, PLUTOS_HOME_DIR } from './lib/approot.mjs';
 import { registerCurrentInstall, storageInfo } from './lib/app-data.mjs';
 import { isDevMode, DEV_PORT, devSandboxDir } from './lib/run-mode.mjs';
@@ -13,24 +12,17 @@ import * as workspaces from './lib/workspaces.mjs';
 import { recommendedMcps, RECOMMENDED_MCPS, installRecommendedMcp, projectMcpKeys } from './lib/mcps.mjs';
 import { listDirs } from './lib/fs-browse.mjs';
 import { parseBoardEntries } from './lib/board.mjs';
-import { hygieneReport, archiveDoneEntries, docDrift } from './lib/hygiene.mjs';
-import { continuityPathFor, parseContinuity } from './lib/continuity.mjs';
-import { assessContext } from './lib/context.mjs';
+import { hygieneReport, archiveDoneEntries } from './lib/hygiene.mjs';
 import { MCP_REQUESTS, requestMcpSetup } from './lib/mcp-requests.mjs';
 import { buildStatusReport, renderReportMarkdown } from './lib/report.mjs';
-import { buildDeck, renderDeckMarkdown, renderDeckHtml } from './lib/deck.mjs';
+import { buildUsageReport } from './lib/usage-report.mjs';
 import { boardPathFor, agentBoardPathFor } from './lib/roadmap.mjs';
 import { rosterPathFor, parseRoster } from './lib/roster.mjs';
 import { removeRosterAgent } from './lib/roster-store.mjs';
-import { readState } from './lib/state.mjs';
-import { runCodeScan, readIndexShards, CODEINDEX_SHARD_DIR, OBSIDIAN_SHARD_DIR } from './lib/codeindex.mjs';
-import { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph, isGraphAutoRefresh, setGraphAutoRefresh, renderGraphPage } from './lib/graphify.mjs';
-import { QUESTIONS, parseInterview, recommend, renderInterview } from './lib/interview.mjs';
-import { scanProject, buildRecommendation } from './lib/recommend.mjs';
 import { getActivity } from './lib/activity.mjs';
 import { writeBoardEntry, boardTier } from './lib/board-store.mjs';
 import { listApprovals, answerApproval, approvalTier, tierAllows, designPickImagePath } from './lib/approvals.mjs';
-import { routeNeedsProject, PROJECT_WRITE_ROUTES, PROJECT_PAGE_ROUTES, NO_PROJECT_READ_PAYLOAD, NO_PROJECT_MESSAGE } from './lib/route-policy.mjs';
+import { routeNeedsProject, PROJECT_WRITE_ROUTES, NO_PROJECT_READ_PAYLOAD, NO_PROJECT_MESSAGE } from './lib/route-policy.mjs';
 import { readIdeas, addIdea } from './lib/ideas.mjs';
 import { openBrowser } from './lib/open-browser.mjs';
 import { connectionPlan, wireClient, STUB_REL } from './lib/connect.mjs';
@@ -43,13 +35,8 @@ import * as auth from './lib/auth.mjs';
 import { sameProjectPath } from './lib/project-binding.mjs';
 import { mutateMcpStatus, readMcpStatus, pruneMcpClients, projectMcpStatus } from './lib/mcp-status.mjs';
 import { managementRoutes, assertBoardProject, projectCoordinationRoot } from './lib/management-routes.mjs';
-import { researchRoutes } from './lib/research/routes.mjs';
-import { councilRoutes } from './lib/council-routes.mjs';
 import { updateRoutes } from './lib/update-routes.mjs';
-import { getProjectSpend, runProjectSpend } from './lib/spend.mjs';
-import { readTokenUsage } from './lib/usage.mjs';
 import { applyApprovedSideEffects } from './lib/approval-effects.mjs';
-import { SKILL_HOMES, PACK_ID_RE, scanProjectSkills, listPacks, registerPack, forgetPack, activatePack, deactivatePack, readActivation } from './lib/skills.mjs';
 
 // Not the file's real dirname — the app root (exe folder when packaged, repo root in
 // dev). Everything served/copied from here must ship next to the packaged exe.
@@ -294,8 +281,6 @@ const routes = {
     },
 
     ...managementRoutes({ sendJson, readJsonBody }),
-    ...researchRoutes({ sendJson, readJsonBody, getProjectRoot: () => workspaces.getActiveWorkspace() }),
-    ...councilRoutes({ sendJson, readJsonBody, coordinationRoot, requireCapturedProject }),
     // Settings → Updates: this install (APP_ROOT), never the open project.
     ...updateRoutes({ sendJson, readJsonBody, root: APP_ROOT, packaged: PACKAGED, devMode: DEV_MODE }),
 
@@ -307,59 +292,6 @@ const routes = {
         if (!body) { res.writeHead(404); res.end('Not Found'); return; }
         res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' });
         res.end(body);
-    },
-
-    // Project interview (Setup tab). Reads/writes docs/handoff/PROJECT_INTERVIEW.md
-    // of the active project — the same file any AI fills in via AGENTS.md Rule 0.
-    'GET /api/interview': (req, res) => {
-        const projectRoot = coordinationRoot();
-        const file = path.join(projectRoot, 'docs', 'handoff', 'PROJECT_INTERVIEW.md');
-        const answers = fs.existsSync(file) ? parseInterview(fs.readFileSync(file, 'utf8')) : {};
-        sendJson(res, 200, {
-            exists: fs.existsSync(file),
-            project: path.basename(projectRoot),
-            questions: QUESTIONS,
-            answers,
-            recommendation: recommend(answers)
-        });
-    },
-
-    'POST /api/interview': async (req, res) => {
-        const data = await readJsonBody(req);
-        try {
-            const projectRoot = coordinationRoot();
-            if (!workspaces.getActiveWorkspace()) throw new Error('Select a workspace first.');
-            const answers = {};
-            for (const q of QUESTIONS) {
-                if (data.answers && q.options.includes(data.answers[q.id])) answers[q.id] = data.answers[q.id];
-            }
-            const dir = path.join(projectRoot, 'docs', 'handoff');
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(path.join(dir, 'PROJECT_INTERVIEW.md'), renderInterview(answers), 'utf8');
-            sendJson(res, 200, { success: true, answers, recommendation: recommend(answers) });
-        } catch (e) {
-            sendJson(res, 400, { success: false, message: e.message });
-        }
-    },
-
-    // The recommendation engine: scans the active project's actual files (package.json deps,
-    // engine markers, tests, monorepo, git) and combines that with any interview answers —
-    // works with ZERO interview (Structure-only / no-AI projects still get real signal).
-    // Suggestion only; nothing here writes to disk.
-    'GET /api/recommendations': (req, res) => {
-        const projectRoot = sourceRoot();
-        const interviewFile = path.join(coordinationRoot(), 'docs', 'handoff', 'PROJECT_INTERVIEW.md');
-        const hasInterview = fs.existsSync(interviewFile);
-        const answers = hasInterview ? parseInterview(fs.readFileSync(interviewFile, 'utf8')) : {};
-        const signals = scanProject(projectRoot);
-        sendJson(res, 200, {
-            project: path.basename(projectRoot),
-            projectRoot,
-            installed: workspaces.isWorkspaceInstalled(projectRoot),
-            hasInterview,
-            signals,
-            recommendation: buildRecommendation(signals, answers)
-        });
     },
 
     // Remove an agent from the roster — the owner's explicit action from the Board tab.
@@ -434,21 +366,6 @@ const routes = {
         }
     },
 
-    // Session memory — the durable half of the continuity loop (session_start/session_end).
-    'GET /api/continuity': (req, res) => {
-        const root = coordinationRoot();
-        const file = continuityPathFor(root);
-        const exists = fs.existsSync(file);
-        const parsed = exists ? parseContinuity(fs.readFileSync(file, 'utf8')) : { digest: [], sessions: [] };
-        const context = assessContext(root);
-        sendJson(res, 200, {
-            exists: exists || context.exists,
-            ...(exists ? { path: file, updatedAt: fs.statSync(file).mtime } : {}),
-            ...parsed,
-            context
-        });
-    },
-
     // The third map: status report — what happened / what changed / what's next, assembled
     // per request from git + CONTINUITY + boards + hygiene. Never stored, cannot go stale.
     'GET /api/report': (req, res, url) => {
@@ -457,25 +374,11 @@ const routes = {
         sendJson(res, 200, { ...report, markdown: renderReportMarkdown(report) });
     },
 
-    // The story deck: the project's history as a plain-language presentation, merged from
-    // the live session ledger + the archive. GET /deck serves it as a standalone page.
-    // ?lang= — the deck is the one output written for the OWNER to read, so its chrome
-    // follows the UI language (the dashboard's Story Deck link passes the current one).
-    // Unknown/absent falls back to English inside lib/deck.mjs. The slide text itself is the
-    // AI-recorded `story` line and is never machine-translated.
-    'GET /api/deck': (req, res, url) => {
-        const deck = buildDeck(coordinationRoot(), { sourceRoot: sourceRoot() });
-        sendJson(res, 200, { ...deck, markdown: renderDeckMarkdown(deck, url?.searchParams.get('lang')) });
-    },
-
-    'GET /deck': (req, res, url) => {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderDeckHtml(buildDeck(coordinationRoot(), { sourceRoot: sourceRoot() }), url?.searchParams.get('lang')));
-    },
-
-    'GET /api/state': (req, res) => {
-        const data = readState(coordinationRoot());
-        sendJson(res, 200, data || { state: null, recent: [] });
+    // The usage log's summary (lib/usage-report.mjs): which AIs called which PLUT_OS tools. Not the
+    // token ledger (plutos_usage). Read-only; with no project the route policy answers needsProject.
+    'GET /api/usage': (req, res, url) => {
+        const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 7));
+        sendJson(res, 200, buildUsageReport(coordinationRoot(), { days }));
     },
 
     // Polled every few seconds by the live strip. Read-only and cheap on purpose: it must
@@ -511,25 +414,7 @@ const routes = {
     // Questions an agent stopped to ask (the plutos_ask queue). Polled every few seconds by
     // every open dashboard, so it stays a directory scan of small files and nothing more —
     // no git, no markdown parsing, no project scan. An unanswered question means an agent is
-    // sitting idle, which is why the UI shows it over whatever tab you are on.
-    // AI costs. The project's own ledger: Claude Code's transcripts for the open project only,
-    // read off this machine, no network and no outside tool.
-    'GET /api/usage': (req, res, url) => {
-        const force = !!(url && url.searchParams && url.searchParams.get('force'));
-        sendJson(res, 200, readTokenUsage(workspaces.getActiveWorkspace(), { force, onlyProject: true }));
-    },
-    // CodeBurn's machine-wide figures: GET answers with the last run (or standby) and never
-    // starts CodeBurn; POST /api/spend/run is the owner's button. CodeBurn is run with npx --no,
-    // so a machine without it gets standby, never a download.
-    'GET /api/spend': (req, res, url) => {
-        const p = url && url.searchParams ? url.searchParams : null;
-        sendJson(res, 200, getProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
-    },
-    'POST /api/spend/run': (req, res, url) => {
-        const p = url && url.searchParams ? url.searchParams : null;
-        sendJson(res, 200, runProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
-    },
-
+    // sitting idle, which is why Home shows it first.
     'GET /api/approvals': (req, res) => {
         try {
             const expected = new URL(req.url, 'http://localhost').searchParams.get('project');
@@ -712,75 +597,6 @@ const routes = {
         }
     },
 
-    'GET /api/graphify': (req, res, url) => {
-        const projectRoot = workspaces.getActiveWorkspace();
-        const mode = url && url.searchParams ? (url.searchParams.get('mode') || 'code') : 'code';
-        sendJson(res, 200, {
-            ...getProjectDocGraphStatus(projectRoot, mode),
-            autoRefresh: isGraphAutoRefresh(projectRoot)
-        });
-    },
-
-    // Whether the graph is part of the session loop, not just a tab. Project-scoped, because
-    // the module switch it sits beside is localStorage and the MCP server cannot read that.
-    'POST /api/graphify/auto': async (req, res) => {
-        const projectRoot = workspaces.getActiveWorkspace();
-        let enabled = null;
-        const body = await readJsonBody(req, { fallback: null });
-        if (body && typeof body.enabled === 'boolean') enabled = body.enabled;
-        if (enabled === null) {
-            sendJson(res, 400, { success: false, message: 'Send { enabled: true|false }.' });
-            return;
-        }
-        sendJson(res, 200, setGraphAutoRefresh(projectRoot, enabled));
-    },
-
-    'GET /api/graphify/html': (req, res, url) => {
-        const projectRoot = workspaces.getActiveWorkspace();
-        if (!projectRoot) {
-            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('No project selected');
-            return;
-        }
-        // Drawn from the graph data with the current page (lib/graphify.mjs renderGraphPage), so a
-        // graph built by an older version opens with today's page instead of its stale HTML copy.
-        const content = renderGraphPage(projectRoot);
-        if (!content) {
-            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('The Graphify code map is not generated yet.');
-            return;
-        }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(content);
-    },
-
-    'POST /api/graphify/scan': async (req, res, url) => {
-        // No-project is handled at dispatch (lib/route-policy.mjs), which answers 409 with
-        // needsProject like every other write route — a private guard here would answer 400
-        // and diverge from that contract for no reason.
-        const projectRoot = workspaces.getActiveWorkspace();
-        let mode = url && url.searchParams ? (url.searchParams.get('mode') || 'code') : 'code';
-        const body = await readJsonBody(req, { fallback: null });
-        if (body && body.mode) mode = body.mode;
-        const result = buildProjectDocGraph(projectRoot, mode);
-        sendJson(res, result.success ? 200 : 500, result);
-    },
-
-    'POST /api/graphify/clean': async (req, res, url) => {
-        const projectRoot = workspaces.getActiveWorkspace();
-        // No default: an unspecified mode used to mean 'all', so a parameterless POST deleted
-        // both graphs. Deletion is the one thing that should never be what you get by omission.
-        let mode = url && url.searchParams ? url.searchParams.get('mode') : null;
-        const body = await readJsonBody(req, { fallback: null });
-        if (body && body.mode) mode = body.mode;
-        if (!mode) {
-            sendJson(res, 400, { success: false, message: 'Specify mode: code or all.' });
-            return;
-        }
-        const result = cleanProjectGraph(projectRoot, mode);
-        sendJson(res, result.success ? 200 : 500, result);
-    },
-
     // Which AI tools this project is wired to. Add Project only ever wrote .mcp.json, which
     // is Claude Code's file and nobody else's — every other tool looked "broken" when in fact
     // PLUT_OS had never written anything it reads.
@@ -927,10 +743,11 @@ const routes = {
             }
             // PLUT_OS's own entry is written by lib/connect.mjs for the chosen client: here the
             // team-shared Claude Code file. Other clients: the Connect panel.
-            if (entry.id === 'plutos') wireClient('claude-code', ws);
-            else installRecommendedMcp(ws, entry.id, entry.config);
+            const wired = entry.id === 'plutos' ? wireClient('claude-code', ws) : null;
+            if (!wired) installRecommendedMcp(ws, entry.id, entry.config);
             sendJson(res, 200, { success: true, approval: 'claude-code',
-                message: "Added to this project's .mcp.json. Claude Code asks you to approve it the next time it opens this project." });
+                message: "Added to this project's .mcp.json. Claude Code asks you to approve it the next time it opens this project."
+                    + (wired?.hooksNotice ? ` ${wired.hooksNotice}` : '') });
         } catch (e) {
             sendJson(res, 500, { success: false, message: e.message });
         }
@@ -941,286 +758,6 @@ const routes = {
             sendJson(res, 200, { success: true, ...listDirs(url.searchParams.get('path')) });
         } catch (e) {
             sendJson(res, 200, { success: false, message: e.message });
-        }
-    },
-
-    'GET /api/codeindex': (req, res) => {
-        const projectRoot = indexRoot();
-        if (!projectRoot) {
-            sendJson(res, 200, { exists: false, content: '' });
-            return;
-        }
-        const shards = readIndexShards(projectRoot, 'obsidian');
-        const catalogPath = path.join(projectRoot, 'docs', 'ai', 'OBSIDIAN_INDEX.md');
-        const content = shards || (fs.existsSync(catalogPath) ? fs.readFileSync(catalogPath, 'utf8') : '');
-        if (!content) {
-            sendJson(res, 200, { exists: false, content: '' });
-            return;
-        }
-        sendJson(res, 200, {
-            exists: true,
-            content,
-            updatedAt: fs.existsSync(catalogPath) ? fs.statSync(catalogPath).mtime : new Date()
-        });
-    },
-
-    // Detects the project type and scans in-process — previously copied and ran a hardcoded,
-    // externally-sourced single-stack PowerShell template into every project regardless of
-    // stack, producing a near-empty index for every other project.
-    'POST /api/codeindex/scan': (req, res) => {
-        const projectRoot = sourceRoot();
-        if (!projectRoot) {
-            sendJson(res, 400, { success: false, message: 'No active project selected' });
-            return;
-        }
-        try {
-            const result = runCodeScan(projectRoot, { outputRoot: indexRoot() });
-            sendJson(res, 200, { success: true, ...result });
-        } catch (err) {
-            sendJson(res, 400, { success: false, message: err.message });
-        }
-    },
-
-    // Document Hub's Open button: one project document, in the OS default app, on the PLUTOS
-    // computer only. A phone asking would open a file on a desk nobody is looking at. The path
-    // must resolve, symlinks followed, to an existing .md file inside the project. Windows opens
-    // through explorer.exe, not `cmd /c start`: cmd re-parses its arguments, so a file named
-    // `a&b.md` would run `b.md` as a command.
-    'POST /api/docs/open': async (req, res) => {
-        if (answeredVia(req) !== 'local') {
-            sendJson(res, 403, { success: false, message: 'Documents open on the PLUTOS computer only.' });
-            return;
-        }
-        const data = await readJsonBody(req, { fallback: {} });
-        const rel = typeof data.path === 'string' ? data.path : '';
-        let file;
-        try {
-            const root = fs.realpathSync(sourceRoot());
-            file = fs.realpathSync(path.resolve(root, rel));
-            if (!rel || !file.startsWith(root + path.sep) || !/\.md$/i.test(file) || !fs.statSync(file).isFile()) throw new Error('outside');
-        } catch (e) {
-            sendJson(res, 400, { success: false, message: 'That is not a markdown document inside this project.' });
-            return;
-        }
-        if (process.env.PLUTOS_NO_OS_OPEN === '1') {   // tests: validate, never launch an editor
-            sendJson(res, 200, { success: true, opened: false, path: file });
-            return;
-        }
-        const [command, args] = process.platform === 'win32' ? ['explorer.exe', [file]]
-            : process.platform === 'darwin' ? ['open', [file]] : ['xdg-open', [file]];
-        try {
-            const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
-            child.on('error', () => { /* no default app; the toast already said we asked */ });
-            child.unref();
-            sendJson(res, 200, { success: true, opened: true, path: file });
-        } catch (e) {
-            sendJson(res, 500, { success: false, message: `Could not open the document: ${e.message}` });
-        }
-    },
-
-    'GET /api/docs': (req, res) => {
-        const projectRoot = sourceRoot();
-        if (!projectRoot) {
-            sendJson(res, 200, { success: true, docs: [] });
-            return;
-        }
-        const docsDir = path.join(projectRoot, 'docs');
-        // The codeindex/obsidian shard folders (and their catalog files) are generated output
-        // of the Codebase Index scan, not authored documentation — walking them into the doc
-        // graph too flooded it with a shard per top-level code folder (14+14 after a real scan)
-        // on top of the actual docs, which is what made the hub look broken/cluttered rather
-        // than just large. Same exclusion codeindex.mjs's own readMdDocs() already applies when
-        // cross-referencing docs against code, kept in sync via the shared path constants.
-        const GENERATED_DOC_DIRS = new Set([
-            path.join(...CODEINDEX_SHARD_DIR),
-            path.join(...OBSIDIAN_SHARD_DIR)
-        ]);
-        const isGeneratedIndexDoc = (name) => /INDEX|CODEINDEX/i.test(name.replace(/\.md$/, ''));
-        try {
-            const getDocsRecursively = (dir, rootDir, recurse = true) => {
-                let results = [];
-                if (!fs.existsSync(dir)) return results;
-                const list = fs.readdirSync(dir);
-                list.forEach(file => {
-                    const filePath = path.join(dir, file);
-                    const stat = fs.statSync(filePath);
-                    if (stat && stat.isDirectory()) {
-                        const relDir = path.relative(rootDir, filePath);
-                        if (recurse && file !== 'node_modules' && file !== '.git' && !GENERATED_DOC_DIRS.has(relDir)) {
-                            results = results.concat(getDocsRecursively(filePath, rootDir));
-                        }
-                    } else if (file.endsWith('.md') && !isGeneratedIndexDoc(file)) {
-                        const relativePath = path.relative(rootDir, filePath);
-
-                        let lastAuthor = 'Unknown';
-                        let lastCommit = 'No commit';
-                        let lastCommitDate = stat.mtime.toISOString();
-                        
-                        try {
-                            // execFileSync (argv array) — never a shell string, so a filename
-                            // like `` `x`.md `` or `$(...).md` can't inject a command.
-                            const gitLog = execFileSync('git', ['log', '-n', '1', '--pretty=format:%an|%ad|%s', '--', relativePath], { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-                            if (gitLog) {
-                                const [author, date, msg] = gitLog.split('|');
-                                lastAuthor = author || 'Unknown';
-                                lastCommitDate = date ? new Date(date).toISOString() : stat.mtime.toISOString();
-                                lastCommit = msg || 'No commit message';
-                            }
-                        } catch (e) {
-                            lastAuthor = 'Local Edit';
-                            lastCommit = 'Uncommitted changes';
-                        }
-                        
-                        // Cross references: a [[wiki]] link by name, and a Markdown link to a .md
-                        // file resolved against the document's own folder into a project path
-                        // (README.md's `docs/GUIDE.md`, PAGES.md's `architecture/06-frontend.md`).
-                        // Only wiki links were read before, and the documents here write
-                        // Markdown links, so the map showed links for one document in 123.
-                        const links = [];
-                        const relDir = path.posix.dirname(relativePath.replace(/\\/g, '/'));
-                        const add = link => { if (link && !links.includes(link)) links.push(link); };
-                        try {
-                            const content = fs.readFileSync(filePath, 'utf8');
-                            const wikiRegex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
-                            let match;
-                            while ((match = wikiRegex.exec(content)) !== null) add(match[1].trim().replace(/\.md$/, ''));
-                            const mdRegex = /\]\(<?([^)\s<>]+?\.md)(?:#[^)>]*)?>?\)/gi;
-                            while ((match = mdRegex.exec(content)) !== null) {
-                                const target = match[1];
-                                if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;   // http(s), mailto, file
-                                const resolved = path.posix.normalize(path.posix.join(relDir, target));
-                                if (!resolved.startsWith('../') && !path.posix.isAbsolute(resolved)) add(resolved);
-                            }
-                        } catch (e) {
-                            // Ignored
-                        }
-
-                        results.push({
-                            name: file,
-                            path: relativePath.replace(/\\/g, '/'),
-                            size: stat.size,
-                            lastModified: lastCommitDate,
-                            lastAuthor: lastAuthor,
-                            lastCommit: lastCommit,
-                            links: links
-                        });
-                    }
-                });
-                return results;
-            };
-            
-            // Root-level docs too (README/MVP/ARCHITECTURE/IDEAS...) — not recursed, so the
-            // whole source tree doesn't flood the hub. They are exactly the documents that
-            // drift, and scanning docs/ alone left them invisible here.
-            const docs = [
-                ...getDocsRecursively(projectRoot, projectRoot, false),
-                ...getDocsRecursively(docsDir, projectRoot)
-            ];
-            const drift = docDrift(projectRoot, docs.map(d => d.path));
-            docs.forEach(d => { d.drift = drift[d.path] || null; });
-            sendJson(res, 200, { success: true, docs });
-        } catch (e) {
-            sendJson(res, 500, { success: false, message: e.message });
-        }
-    },
-
-    'GET /api/git/commits': (req, res) => {
-        const projectRoot = workspaces.getProjectRoot();
-        if (!projectRoot) {
-            sendJson(res, 200, { success: true, commits: [] });
-            return;
-        }
-        try {
-            const gitLog = execFileSync('git', ['log', '-n', '10', '--pretty=format:%h|%an|%ad|%s'], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-            if (!gitLog) {
-                sendJson(res, 200, { success: true, commits: [] });
-                return;
-            }
-            const commits = gitLog.split('\n').map(line => {
-                const [hash, author, date, message] = line.split('|');
-                return {
-                    hash,
-                    author,
-                    date: date ? new Date(date).toISOString() : new Date().toISOString(),
-                    message
-                };
-            });
-            sendJson(res, 200, { success: true, commits });
-        } catch (e) {
-            sendJson(res, 200, { success: true, commits: [] });
-        }
-    },
-
-    // Skills page (lib/skills.mjs). The project's Agent Skills are read from the source tree, where
-    // the clients read them; a pack is registered once in the data folder and switched on per project.
-    'GET /api/skills': (req, res) => {
-        const projectRoot = sourceRoot();
-        const { skills, notes } = scanProjectSkills(projectRoot);
-        const active = readActivation(projectRoot).active;
-        sendJson(res, 200, {
-            project: path.basename(projectRoot),
-            projectRoot,
-            installed: workspaces.isWorkspaceInstalled(projectRoot),
-            skills,
-            packs: listPacks().map(p => ({ ...p, active: !!active[p.id] })),
-            homes: SKILL_HOMES,
-            notes
-        });
-    },
-
-    // The registry alone, so the Packs card works before a project is open.
-    'GET /api/packs': (req, res) => {
-        sendJson(res, 200, { packs: listPacks().map(p => ({ ...p, active: false })), homes: SKILL_HOMES });
-    },
-
-    'POST /api/packs/add': async (req, res) => {
-        const data = await readJsonBody(req);
-        try {
-            if (typeof data.path !== 'string' || !data.path.trim()) throw new Error('Name the pack folder (a folder on this computer).');
-            const pack = registerPack(data.path.trim(), { projectRoot: workspaces.getActiveWorkspace() || '' });
-            sendJson(res, 200, { success: true, pack, message: `Pack "${pack.name}" registered with ${pack.skills.length} skill(s).` });
-        } catch (e) {
-            sendJson(res, 400, { success: false, message: e.message });
-        }
-    },
-
-    'POST /api/packs/on': async (req, res) => {
-        const data = await readJsonBody(req);
-        try {
-            const id = typeof data.id === 'string' && PACK_ID_RE.test(data.id) ? data.id : '';
-            if (!id) throw new Error('Name the pack id.');
-            const projectRoot = requireInstalledProject();
-            const result = activatePack(projectRoot, id);
-            sendJson(res, 200, { success: true, ...result,
-                message: `Pack "${id}" on: ${result.skills.length} skill(s) in ${result.homes.join(' and ')}${result.placed ? '' : ' (already placed)'}.` });
-        } catch (e) {
-            sendJson(res, 400, { success: false, message: e.message });
-        }
-    },
-
-    'POST /api/packs/off': async (req, res) => {
-        const data = await readJsonBody(req);
-        try {
-            const id = typeof data.id === 'string' && PACK_ID_RE.test(data.id) ? data.id : '';
-            if (!id) throw new Error('Name the pack id.');
-            const projectRoot = requireInstalledProject();
-            const result = deactivatePack(projectRoot, id);
-            sendJson(res, 200, { success: true, ...result,
-                message: `Pack "${id}" off: ${result.removed.length} folder(s) removed${result.kept.length ? `; kept, because edited or added: ${result.kept.join(', ')}` : ''}.` });
-        } catch (e) {
-            sendJson(res, 400, { success: false, message: e.message });
-        }
-    },
-
-    'POST /api/packs/forget': async (req, res) => {
-        const data = await readJsonBody(req);
-        try {
-            const id = typeof data.id === 'string' && PACK_ID_RE.test(data.id) ? data.id : '';
-            if (!id) throw new Error('Name the pack id.');
-            forgetPack(id);
-            sendJson(res, 200, { success: true, id, message: `Pack "${id}" forgotten; the folders it placed in projects stay until switched off there.` });
-        } catch (e) {
-            sendJson(res, 400, { success: false, message: e.message });
         }
     }
 };
@@ -1274,8 +811,7 @@ function isAuthenticated(req) {
 }
 
 // Headers every response carries, before any route decides more. No other site may put the
-// dashboard in a frame (an invisible frame over an approve button is clickjacking; its own
-// dependency-graph frame is same-origin and stays allowed), no file is read as a type it does not
+// dashboard in a frame (an invisible frame over an approve button is clickjacking), no file is read as a type it does not
 // declare, and no address leaks out in a Referer (the app must never put its
 // user at risk).
 const BASE_HEADERS = {
@@ -1306,11 +842,7 @@ const server = http.createServer(async (req, res) => {
     // install-directory bug that a per-handler guard let through for thirty-three routes.
     const scopedBoardRead = routeKey === 'GET /api/board' && url.searchParams.has('project');
     if (routeNeedsProject(routeKey) && !workspaces.getActiveWorkspace() && !scopedBoardRead) {
-        if (PROJECT_PAGE_ROUTES.has(routeKey)) {
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(`<!doctype html><meta charset="utf-8"><title>PLUT_OS</title>`
-                + `<body style="font:15px system-ui;padding:3rem;color:#4c515b">${NO_PROJECT_MESSAGE}</body>`);
-        } else if (PROJECT_WRITE_ROUTES.has(routeKey)) {
+        if (PROJECT_WRITE_ROUTES.has(routeKey)) {
             sendJson(res, 409, { success: false, needsProject: true, message: NO_PROJECT_MESSAGE });
         } else {
             sendJson(res, 200, NO_PROJECT_READ_PAYLOAD);

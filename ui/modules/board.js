@@ -6,24 +6,23 @@
 // look at the board. Now the boards/ideas are one switched pane with columns that scroll
 // inside themselves, and the people doing the work sit in a rail beside them that never moves.
 import { t } from '../i18n.js';
-import { knownClientColor } from './orbit.js';
 import { showToast } from './toast.js';
 import { escHtml, jsArg } from '../esc.js';
 import { verificationBadge, verificationForm } from './verification.js';
 import { emptyState } from './page.js';
-import { returnProjectKey } from './return-summary.js';
 
 // Kanban columns (approved redesign): status is spatial, not read off a pill. Column order
-// mirrors the flow of work; colors come from the semantic status tokens, never the accent.
+// mirrors the flow of work; each column's colour comes from a status class (st-*) the
+// stylesheet maps to the semantic status tokens, never the accent and never an inline style.
 // Each column carries what its status MEANS, not just its name. The four are a protocol
 // several AIs write into from different tools, and "In progress" alone does not say who is
 // allowed to move it or what has to be true to leave it — so the caption states the rule the
 // board is actually keeping.
 const KANBAN_COLUMNS = [
-    { status: 'TODO', labelKey: 'col_todo', color: 'var(--status-todo)', capKey: 'col_cap_todo', emptyKey: 'col_empty_todo' },
-    { status: 'IN_PROGRESS', labelKey: 'col_progress', color: 'var(--status-progress)', capKey: 'col_cap_progress', emptyKey: 'col_empty_progress' },
-    { status: 'DONE', labelKey: 'col_done', color: 'var(--status-done)', capKey: 'col_cap_done', emptyKey: 'col_empty_done' },
-    { status: 'BLOCKED', labelKey: 'col_blocked', color: 'var(--status-error)', capKey: 'col_cap_blocked', emptyKey: 'col_empty_blocked' }
+    { status: 'TODO', labelKey: 'col_todo', tone: 'st-todo', capKey: 'col_cap_todo', emptyKey: 'col_empty_todo' },
+    { status: 'IN_PROGRESS', labelKey: 'col_progress', tone: 'st-progress', capKey: 'col_cap_progress', emptyKey: 'col_empty_progress' },
+    { status: 'DONE', labelKey: 'col_done', tone: 'st-done', capKey: 'col_cap_done', emptyKey: 'col_empty_done' },
+    { status: 'BLOCKED', labelKey: 'col_blocked', tone: 'st-blocked', capKey: 'col_cap_blocked', emptyKey: 'col_empty_blocked' }
 ];
 const KNOWN_STATUSES = new Set(KANBAN_COLUMNS.map(c => c.status));
 
@@ -48,8 +47,8 @@ window.boardToggleCard = function(el) {
     if (el.classList.toggle('open')) openCards.add(key); else openCards.delete(key);
 };
 
-// Everything below is agent-written markdown. Column color is safe by construction (a lookup
-// in the map above, never raw status); every other value is escaped on the way in.
+// Everything below is agent-written markdown. The column's status class is safe by construction
+// (a lookup in the map above, never raw status); every other value is escaped on the way in.
 // Timestamps are written as ISO because the file is machine-readable and shared; a card is
 // not. "2026-08-20T05:20:07.288Z" wrapped onto two lines and told the reader nothing they
 // wanted. Anything that does not parse as a date is passed through untouched — these fields
@@ -145,25 +144,11 @@ window.boardDropAssignee = function(ev, el, name) {
 const initials = (name) => String(name || '?').trim().split(/[\s\-_.]+/).filter(Boolean)
     .slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 
-// A stable colour per name, so the same AI reads the same in the rail and on every card it
-// holds. Derived, never taken from the data: only a number reaches the style attribute.
-function hueOf(name) {
-    let h = 0;
-    for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) % 360;
-    return h;
-}
-
 const ownerOf = (e) => (e.fields.Assignee || e.agent || '').trim();
 
-function chip(name) {
-    // A known AI client wears its orbit colour on the board too (ui/modules/orbit.js).
-    const agent = knownClientColor(name);
-    if (agent) return `<span class="chip chip-agent" style="--agent:${agent};"><span class="chip-dot"></span>${escHtml(name)}</span>`;
-    const hue = hueOf(name);
-    return `<span class="chip" style="--chip-h:${hue};">
-        <span class="chip-dot"></span>${escHtml(name)}
-    </span>`;
-}
+// Who holds a card, in words. One neutral chip for every name: per-AI colours made the board a
+// second palette competing with the status colours that actually mean something.
+const chip = (name) => `<span class="chip">${escHtml(name)}</span>`;
 
 const PRIORITY_RE = /^P([1-9])\s*[-–—:]\s*/;
 const priorityOf = (e) => Number((PRIORITY_RE.exec(e.title) || [])[1]) || Infinity;
@@ -171,7 +156,7 @@ const titleWithoutPriority = (title) => title.replace(PRIORITY_RE, '');
 
 function renderEntries(entries, board) {
     const projectRoot = lastData?.[board]?.projectRoot;
-    const card = (e, color, draggable) => {
+    const card = (e, tone, draggable) => {
         const detail = Object.entries(e.fields)
             .filter(([key]) => !['verification', 'evidence'].includes(key.toLowerCase()))
             .map(([k, v]) => `<div class="kc-field"><b>${escHtml(k)}:</b> ${escHtml(humanizeValue(v))}</div>`).join('')
@@ -180,7 +165,7 @@ function renderEntries(entries, board) {
         // Only entries the board actually models are draggable. A hand-written status the
         // writer would reject is better left alone than silently rewritten by a drop.
         const drag = draggable
-            ? ` draggable="true" title="${t('drag_hint')}"
+            ? ` draggable="true" title="${escHtml(t('drag_hint'))}"
                 ondragstart="boardDragStart(event, this, ${escHtml(jsArg(board))}, ${escHtml(jsArg(e.agent))}, ${escHtml(jsArg(e.status))}, ${escHtml(jsArg(e.title))})"
                 ondragend="boardDragEnd(this)"`
             : '';
@@ -190,17 +175,17 @@ function renderEntries(entries, board) {
         // characters a template literal would save.
         const key = [board, ownerOf(e), e.title].join('::');
         const pri = priorityOf(e);
-        return `<div class="kanban-card${draggable ? ' draggable' : ''}" style="border-left-color: ${color};"${drag}
+        return `<div class="kanban-card ${tone}${draggable ? ' draggable' : ''}"${drag}
              data-key="${escHtml(key)}" data-agent="${escHtml(e.agent)}" data-title="${escHtml(e.title)}" onclick="boardToggleCard(this)">
             <div class="kc-title">
-                ${pri < Infinity ? `<span class="kc-pri p${pri}" title="${t('card_priority')}">P${pri}</span>` : ''}${escHtml(titleWithoutPriority(e.title))}
+                ${pri < Infinity ? `<span class="kc-pri p${pri}" title="${escHtml(t('card_priority'))}">P${pri}</span>` : ''}${escHtml(titleWithoutPriority(e.title))}
             </div>
             <div class="kc-foot">
                 ${chip(ownerOf(e))}
-                ${e.notes.length ? `<span class="kc-flag" title="${t('card_has_note')}"><span class="kc-q" aria-hidden="true">?</span></span>` : ''}
+                ${e.notes.length ? `<span class="kc-flag" title="${escHtml(t('card_has_note'))}"><span class="kc-q" aria-hidden="true">?</span></span>` : ''}
                 ${detail ? `<span class="kc-more"></span>` : ''}
             </div>
-            ${(badge => badge ? `<div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.3rem;">${badge}</div>` : '')(verificationBadge(e, board, projectRoot))}
+            ${(badge => badge ? `<div class="kc-badges">${badge}</div>` : '')(verificationBadge(e, board, projectRoot))}
             ${detail ? `<div class="kc-detail">${detail}</div>` : ''}
         </div>`;
     };
@@ -211,14 +196,13 @@ function renderEntries(entries, board) {
         // and they were only visible one card at a time — folded inside cards you had to open.
         const questions = items.reduce((n, e) => n + e.notes.length, 0);
         const body = items.length
-            ? items.map(e => card(e, col.color, true)).join('')
+            ? items.map(e => card(e, col.tone, true)).join('')
             : `<div class="empty-state kanban-empty"><p class="empty-text">${t(col.emptyKey)}</p></div>`;
-        return `<div class="kanban-col" style="--col-accent: ${col.color};">
+        return `<div class="kanban-col ${col.tone}">
             <div class="kanban-head">
-                <span class="lbl" style="color: ${col.color};">${t(col.labelKey)}</span>
+                <span class="lbl">${t(col.labelKey)}</span>
                 <span class="n">${items.length}</span>
-                ${questions ? `<span class="kc-flag" title="${t('col_questions')}"><span class="kc-q" aria-hidden="true">?</span>${questions}</span>` : ''}
-                <span class="rail" style="background: ${col.color};"></span>
+                ${questions ? `<span class="kc-flag" title="${escHtml(t('col_questions'))}"><span class="kc-q" aria-hidden="true">?</span>${questions}</span>` : ''}
             </div>
             <div class="kanban-cap">${t(col.capKey)}</div>
             <div class="kanban-body" data-status="${escHtml(col.status)}"
@@ -233,7 +217,7 @@ function renderEntries(entries, board) {
     const strayHtml = strays.length
         ? `<div class="kanban-strays">
              <div class="strays-head">${t('board_strays').replace('{n}', strays.length)}</div>
-             ${strays.map(e => card(e, 'var(--text-muted)', false)).join('')}
+             ${strays.map(e => card(e, 'st-other', false)).join('')}
            </div>`
         : '';
     return `<div class="kanban">${cols}</div>${strayHtml}`;
@@ -255,9 +239,7 @@ const field = (id, label, placeholder, hint = '') => `
 
 function renderAssignForm() {
     return `<details class="card assign-panel" data-panel="assign" data-project-root="${escHtml(lastData?.main?.projectRoot || '')}">
-        <summary>
-            <i data-lucide="plus-circle"></i> ${t('assign_title')}
-        </summary>
+        <summary>${t('assign_title')}</summary>
         <div class="assign-panel-body">
             <div class="assign-row">
                 ${field('assign-title', t('assign_field_title'), t('assign_ph_title'))}
@@ -268,9 +250,9 @@ function renderAssignForm() {
                 ${field('assign-task', t('assign_field_task'), t('assign_ph_task'))}
                 ${field('assign-needs', t('assign_field_needs'), t('assign_ph_needs'), t('assign_hint_needs'))}
             </div>
-            <div class="field-row" style="margin-top:0.9rem;">
+            <div class="field-row assign-actions">
                 <button class="btn-primary" onclick="assignTask()">${t('assign_submit')}</button>
-                <span class="page-status" style="margin:0;">${t('assign_note')}</span>
+                <span class="page-status">${t('assign_note')}</span>
             </div>
         </div>
     </details>`;
@@ -332,7 +314,7 @@ function renderIdeas(data) {
         ? `<ul class="idea-list">${pending.map(row).join('')}</ul>`
         : emptyState({ icon: 'lightbulb', title: t('ideas_empty') });
     const settledHtml = settled.length
-        ? `<details class="cmd-line" style="margin-top: 0.75rem;">
+        ? `<details class="cmd-line ideas-settled">
              <summary>${t('ideas_settled').replace('{n}', settled.length)}</summary>
              <ul class="idea-list">${settled.map(row).join('')}</ul>
            </details>`
@@ -341,12 +323,12 @@ function renderIdeas(data) {
 }
 
 function renderIdeaForm() {
-    return `<div class="field-row" style="margin-bottom: 0.9rem;">
-        <input id="idea-text" type="text" class="field-input" autocomplete="off" placeholder="${t('ideas_ph')}"
+    return `<div class="field-row ideas-form">
+        <input id="idea-text" type="text" class="field-input" autocomplete="off" placeholder="${escHtml(t('ideas_ph'))}"
                onkeydown="if(event.key==='Enter') parkIdea()">
         <button class="btn-primary" onclick="parkIdea()">${t('ideas_submit')}</button>
     </div>
-    <p class="page-status" style="margin: -0.4rem 0 0.9rem;">${t('ideas_note')}</p>`;
+    <p class="page-status ideas-note">${t('ideas_note')}</p>`;
 }
 
 window.parkIdea = async function() {
@@ -366,22 +348,22 @@ window.parkIdea = async function() {
 };
 
 // Hygiene: boards and maps rot silently — bloated entries get skimmed by the AIs reading
-// them, stale maps describe a codebase that moved on. This card is the alarm, and the
-// archive button is the fix that needs no AI.
-const LEVEL_COLOR = { action: 'var(--status-todo)', warn: 'var(--status-todo)', info: 'var(--text-muted)' };
+// them, stale maps describe a codebase that moved on. This section is the alarm, and the
+// archive button is the fix that needs no AI. A warning's level picks a class, never a colour.
+const LEVEL_CLASS = { action: 'is-warn', warn: 'is-warn', info: 'is-info' };
 
 function renderHygiene(h) {
     if (!h || (!h.warnings?.length && !h.boards?.some(b => b.exists))) return '';
     const sizeLine = h.boards.filter(b => b.exists).map(b =>
-        `<span style="margin-right: 1.2rem;"><b style="color: var(--text-title);">${escHtml(b.name)}</b> — ${escHtml(b.active)} ${t('hygiene_active')}, ${escHtml(b.done)} DONE, ${Math.round(b.bytes / 1024) || '<1'} KB</span>`).join('');
+        `<span class="hygiene-stat"><b>${escHtml(b.name)}</b> — ${escHtml(b.active)} ${t('hygiene_active')}, ${escHtml(b.done)} DONE, ${Math.round(b.bytes / 1024) || '&lt;1'} KB</span>`).join('');
     const docLine = h.docs.filter(d => d.exists && d.commitsBehind !== null).map(d =>
-        `<span style="margin-right: 1.2rem;"><b style="color: var(--text-title);">${escHtml(d.name)}</b> — ${escHtml(d.commitsBehind)} ${t('hygiene_commits_behind')}</span>`).join('');
+        `<span class="hygiene-stat"><b>${escHtml(d.name)}</b> — ${escHtml(d.commitsBehind)} ${t('hygiene_commits_behind')}</span>`).join('');
     const warnHtml = h.warnings.length
-        ? h.warnings.map(w => `<div style="color: ${LEVEL_COLOR[w.level] || 'var(--text-muted)'}; font-size: 0.85rem; margin-top: 4px;">
-             <span class="dot"></span><b>${escHtml(w.source)}:</b> ${escHtml(w.message)}
-             ${w.action === 'archive' ? `<button class="btn-secondary btn-sm" style="margin-left: 8px;" onclick="archiveBoard(${escHtml(jsArg(w.board))})">${t('hygiene_archive_btn')}</button>` : ''}
+        ? h.warnings.map(w => `<div class="hygiene-warn ${LEVEL_CLASS[w.level] || 'is-info'}">
+             <b>${escHtml(w.source)}:</b> ${escHtml(w.message)}
+             ${w.action === 'archive' ? `<button class="btn-secondary btn-sm" onclick="archiveBoard(${escHtml(jsArg(w.board))})">${t('hygiene_archive_btn')}</button>` : ''}
            </div>`).join('')
-        : `<div style="color: var(--status-done); font-size: 0.85rem; margin-top: 4px;">${t('hygiene_ok')}</div>`;
+        : `<div class="hygiene-warn is-ok">${t('hygiene_ok')}</div>`;
     // Folded, like the assign form above it. Three stale-doc warnings and two file sizes are
     // worth keeping, but they were pushing the board itself below the fold on every visit —
     // and the board is what this tab is for. The summary carries the one number that decides
@@ -390,12 +372,12 @@ function renderHygiene(h) {
     const badge = n
         ? `<span class="pill pill-todo">${n} ${t(n === 1 ? 'hygiene_warn_one' : 'hygiene_warn_many')}</span>`
         : `<span class="pill pill-done">${t('hygiene_all_clear')}</span>`;
-    return `<details class="card assign-panel" data-panel="hygiene">
-        <summary>
-            <i data-lucide="activity"></i> ${t('hygiene_title')} ${badge}
-        </summary>
+    // A plain fold, not a card: it sits in the Board page's tools section, and a card inside
+    // that section was the card-in-card the simplification removed.
+    return `<details class="assign-panel" data-panel="hygiene">
+        <summary>${t('hygiene_title')} ${badge}</summary>
         <div class="assign-panel-body">
-            <div style="color: var(--text-muted); font-size: 0.8rem;">${sizeLine}${docLine}</div>
+            <div class="hygiene-stats">${sizeLine}${docLine}</div>
             ${warnHtml}
         </div>
     </details>`;
@@ -447,18 +429,16 @@ window.archiveBoard = async function(board) {
 // count, from the board you are looking at.
 function railRow(a, open, main) {
     const status = a.fields.Status || 'active';
-    const hue = hueOf(a.name);
     const last = a.fields['Last active'] || a.fields.Registered || '';
-    const agent = knownClientColor(a.name);
-    return `<div class="ai-row${main ? ' main' : ''}${agent ? ' ai-row-agent' : ''}" style="--chip-h:${hue};${agent ? `--agent:${agent};` : ''}"
+    return `<div class="ai-row${main ? ' main' : ''}"
          title="${escHtml(a.owner)} · ${escHtml(a.role)}${last ? ' · ' + escHtml(humanizeValue(last)) : ''}"
          ondragover="boardDragOver(event, this)"
          ondragleave="boardDragLeave(this)"
          ondrop="boardDropAssignee(event, this, ${escHtml(jsArg(a.name))})">
         <span class="ai-avatar">${escHtml(initials(a.name))}</span>
         <span class="ai-name">${escHtml(a.name)}</span>
-        ${open ? `<span class="ai-load" title="${t('rail_open_tasks')}">${open}</span>` : ''}
-        <button class="ai-remove" title="${t('roster_remove_hint')}"
+        ${open ? `<span class="ai-load" title="${escHtml(t('rail_open_tasks'))}">${open}</span>` : ''}
+        <button class="ai-remove" title="${escHtml(t('roster_remove_hint'))}"
             onclick="removeRosterAgent(${escHtml(jsArg(a.name))}, ${escHtml(jsArg(status))})">×</button>
     </div>`;
 }
@@ -481,8 +461,8 @@ function renderRail(roster, entries) {
                  </details>`
               : '')
         : `<p class="rail-empty">${t('rail_empty')}</p>`;
-    return `<aside class="board-rail" title="${t('rail_hint')}">
-        <div class="rail-head"><i data-lucide="users" style="width:15px;height:15px;"></i> ${t('rail_title')}</div>
+    return `<aside class="board-rail" title="${escHtml(t('rail_hint'))}">
+        <div class="rail-head">${t('rail_title')}</div>
         <div class="rail-body">${body}</div>
     </aside>`;
 }
@@ -578,8 +558,8 @@ function paint() {
     } else {
         pane = !main.exists
             ? emptyState({ icon: 'kanban', title: t('board_missing') })
-            : (main.entries.length ? renderEntries(main.entries, 'main') : emptyState({ icon: 'kanban', title: t('board_empty'), text: t('home_step_task_text'),
-                action: { label: t('home_step_task_btn'), onclick: 'openAssignTask()' } }));
+            : (main.entries.length ? renderEntries(main.entries, 'main') : emptyState({ icon: 'kanban', title: t('board_empty'), text: t('assign_note'),
+                action: { label: t('assign_title'), onclick: 'openAssignTask()' } }));
     }
 
     const counts = {
@@ -616,7 +596,7 @@ function paint() {
     if (assignPending) openAssignPanel();
 }
 
-// "Assign a task" from anywhere (the page head, Home's next step, an empty board): open the
+// "Assign a task" from anywhere (the page head, an empty board): open the
 // form and put the caret in its first field, once the board has drawn it.
 let assignPending = false;
 function openAssignPanel() {
@@ -674,26 +654,3 @@ export async function fetchBoard() {
 }
 
 document.addEventListener('plutos-board-updated', () => { void fetchBoard(); });
-
-window.focusBoardTask = async function(board, agent, title, projectRoot) {
-    if (!['main', 'agents'].includes(board)) return;
-    const expected = returnProjectKey(projectRoot || window.activeWorkspacePath || lastData?.main?.projectRoot);
-    const selectedMatches = () => expected && returnProjectKey(window.activeWorkspacePath) === expected;
-    const outdated = () => { showToast(t('return_summary_outdated'), true); return false; };
-    if (!selectedMatches() || (lastData?.main?.projectRoot && returnProjectKey(lastData.main.projectRoot) !== expected)) return outdated();
-    activeSegment = board;
-    window.switchView?.('board');
-    const refreshed = await fetchBoard();
-    if (!refreshed || !selectedMatches() || returnProjectKey(lastData?.main?.projectRoot) !== expected
-        || returnProjectKey(lastData?.[board]?.projectRoot) !== expected) return outdated();
-    const entry = lastData?.[board]?.entries?.find(item => item.agent === agent && item.title === title);
-    if (!entry) return;
-    const key = [board, ownerOf(entry), entry.title].join('::');
-    openCards.add(key);
-    paint();
-    const cards = document.querySelectorAll('.kanban-card[data-key]');
-    const card = [...cards].find(item => item.getAttribute('data-key') === key
-        && item.getAttribute('data-agent') === agent && item.getAttribute('data-title') === title);
-    card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    return !!card;
-};

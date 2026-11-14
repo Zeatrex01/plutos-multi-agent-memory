@@ -54,7 +54,6 @@ function projectRow(data, details, path) {
         ? `<span class="hub-row-open">${esc(t('btn_active_proj'))}</span>`
         : `<button type="button" class="btn-secondary btn-sm" onclick="switchWorkspace(${jsArg(path)})">${esc(t(last ? 'btn_resume_proj' : 'btn_open_proj'))}</button>`;
     return `<li class="hub-project-row${active ? ' is-active' : ''}" data-workspace-path="${esc(path)}">
-        <i data-lucide="folder" class="hub-row-icon" aria-hidden="true"></i>
         <div class="hub-project-label"><strong>${esc(name)}</strong>
             <code title="${esc(path)}">${esc(shortPath(path))}</code></div>
         <span class="pill ${installed ? 'pill-done' : 'pill-quiet'}">${esc(t(installed ? 'hub_installed' : 'hub_observed'))}</span>
@@ -100,7 +99,6 @@ export function renderWorkspaceBinding(data) {
     const details = data.activeDetails;
     const installed = details?.mode === 'installed';
     return `<div class="hub-current-head">
-            <span class="hub-current-icon"><i data-lucide="folder-open" aria-hidden="true"></i></span>
             <div class="hub-current-title">
                 <span class="hub-eyebrow">${esc(t('hub_binding_title'))}</span>
                 <h3 id="hub-current-title">${esc(workspaceName(data.activeWorkspace))}</h3>
@@ -109,7 +107,7 @@ export function renderWorkspaceBinding(data) {
             <span class="pill ${installed ? 'pill-done' : 'pill-quiet'}">${esc(t(installed ? 'hub_installed' : 'hub_observed'))}</span>
             <div class="hub-current-actions">
                 <button type="button" class="btn-icon" title="${esc(t('hub_copy_path'))}" aria-label="${esc(t('hub_copy_path'))}" onclick="copyProjectPath(${jsArg(data.activeWorkspace)})"><i data-lucide="copy" aria-hidden="true"></i></button>
-                <button id="hub-close-project" type="button" class="btn-secondary btn-sm" onclick="closeWorkspace()"><i data-lucide="log-out" aria-hidden="true"></i> ${esc(t('btn_close_project'))}</button>
+                <button id="hub-close-project" type="button" class="btn-secondary btn-sm" onclick="closeWorkspace()">${esc(t('btn_close_project'))}</button>
             </div>
         </div>
         <details class="hub-current-details"><summary>${esc(t('hub_details'))}</summary>

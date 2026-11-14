@@ -18,23 +18,23 @@ function ensureDialog() {
     dialog = document.createElement('dialog');
     dialog.id = 'repair-dialog';
     dialog.addEventListener('cancel', event => { if (dialog.dataset.busy === 'true') event.preventDefault(); });
-    // margin:auto centres the open dialog; the page's `* { margin: 0 }` reset had pinned it top-left.
-    dialog.style.cssText = 'margin:auto;width:min(720px,90vw);max-height:85vh;overflow:auto;background:var(--bg-primary);color:var(--text-title);border:1px solid var(--border-subtle);border-radius:12px;padding:1.4rem;';
+    // Styled by #repair-dialog in ui/styles.css (margin:auto centres it; the page's `* { margin: 0 }`
+    // reset had pinned it top-left).
     document.body.appendChild(dialog);
     return dialog;
 }
 
 function frame(host, project, body) {
-    host.innerHTML = `<h2 style="margin-top:0;">${t('repair_title')}</h2>
-        <p>${t('repair_target')}</p><p style="overflow-wrap:anywhere;font-family:var(--font-mono);">${escHtml(project)}</p>
-        <div id="repair-body">${body}</div><p role="status" id="repair-message" style="overflow-wrap:anywhere;"></p>
-        <button id="repair-close" class="btn-secondary" style="margin-top:1rem;">${t('repair_close')}</button>`;
+    host.innerHTML = `<h2>${t('repair_title')}</h2>
+        <p>${t('repair_target')}</p><p class="repair-path">${escHtml(project)}</p>
+        <div id="repair-body">${body}</div><p role="status" id="repair-message" class="repair-message"></p>
+        <button id="repair-close" class="btn-secondary repair-close">${t('repair_close')}</button>`;
     host.querySelector('#repair-close').addEventListener('click', () => host.close());
 }
 
 function backupsHtml(backups) {
     if (!backups?.length) return '';
-    return `<h3>${t('repair_backups')}</h3>${backups.map((b, i) => `<div style="display:flex;gap:1rem;align-items:center;margin-top:0.6rem;">
+    return `<h3>${t('repair_backups')}</h3>${backups.map((b, i) => `<div class="repair-backup">
         <span>${escHtml(new Date(b.createdAt).toLocaleString())}</span>
         <button class="btn-secondary btn-sm" data-restore="${i}">${t('repair_restore')}</button></div>`).join('')}`;
 }
@@ -69,7 +69,7 @@ async function showPreview(host, project, requestGeneration = ++generation) {
         if (!host.open || requestGeneration !== generation) return;
         const changes = preview.changes || [], backups = preview.backups || [];
         frame(host, preview.projectRoot, `<p>${t('repair_preview_note')}</p>
-            ${changes.length ? `<ul>${changes.map(change => `<li style="margin:0.6rem 0;overflow-wrap:anywhere;"><b>${escHtml(change.path)}</b> — ${escHtml(change.reason || change.action)}</li>`).join('')}</ul>` : `<p>${t('repair_no_changes')}</p>`}
+            ${changes.length ? `<ul>${changes.map(change => `<li class="repair-change"><b>${escHtml(change.path)}</b> — ${escHtml(change.reason || change.action)}</li>`).join('')}</ul>` : `<p>${t('repair_no_changes')}</p>`}
             ${(preview.warnings || []).map(warning => `<p>${escHtml(typeof warning === 'string' ? warning : warning.message)}</p>`).join('')}
             ${changes.length ? `<button id="repair-apply" class="btn-primary">${t('repair_apply')}</button>` : ''}
             ${backupsHtml(backups)}`);

@@ -1,9 +1,9 @@
-// Settings tab: visual theme, auto-refresh rate, local cache reset.
-import { showToast } from './toast.js';
+// Settings page: storage paths, the project-links repair, and the one fixed refresh of the open
+// page. Language and light/dark are switched by i18n.js and the shell.
 import { fetchBoard } from './board.js';
 import { t } from '../i18n.js';
 import { openProjectRepair } from './repair.js';
-import { refreshReturnSummary } from './overview.js';
+import { fetchOverview } from './overview.js';
 
 function setText(id, value) {
     const el = document.getElementById(id);
@@ -34,83 +34,34 @@ export async function fetchStorageInfo() {
             status.textContent = migrated
                 ? t('settings_storage_migrated').replace('{n}', String(migrated))
                 : t('settings_storage_stable');
-            status.style.color = 'var(--status-done)';
+            status.classList.remove('is-error'); status.classList.add('is-ok');
         }
     } catch (e) {
         if (status) {
             status.textContent = e.message;
-            status.style.color = 'var(--status-blocked)';
+            status.classList.remove('is-ok'); status.classList.add('is-error');
         }
     }
 }
 
-function applyTheme(theme) {
-    const root = document.documentElement;
-    if (theme === 'cyberpunk') {
-        root.style.setProperty('--brand-primary', '#8b7cf6'); root.style.setProperty('--on-brand', '#ffffff');
-    } else if (theme === 'neon-blue') {
-        root.style.setProperty('--brand-primary', '#5da9f6'); root.style.setProperty('--on-brand', '#0b1120');
-    } else if (theme === 'emerald') {
-        root.style.setProperty('--brand-primary', '#3bb3a3'); root.style.setProperty('--on-brand', '#0b1120');
-    } else {
-        // Default = no override: the light and dark tokens supply the core's amber, each with
-        // the text colour that reads on it.
-        root.style.removeProperty('--brand-primary'); root.style.removeProperty('--on-brand');
-    }
-}
-
-export function initVisualTheme() {
-    const saved = localStorage.getItem('plutos-theme');
-    if (saved) {
-        const select = document.getElementById('setting-theme');
-        if (select) select.value = saved;
-        applyTheme(saved);
-    }
-}
-
-window.applyVisualTheme = function() {
-    const select = document.getElementById('setting-theme');
-    if (!select) return;
-    const theme = select.value;
-    localStorage.setItem('plutos-theme', theme);
-    applyTheme(theme);
-    showToast('Visual theme updated!');
-};
+// One fixed refresh of the open page, Home or Board. The rate used to be a setting with four
+// choices and "manual"; nobody needs to tune it, and a hidden tab is not polled at all.
+// Board refreshes every tick. Home's status builds the whole report (boards, continuity, git), so
+// it refreshes every HOME_EVERY ticks (30 s); the questions on Home poll on their own in approvals.js.
+const REFRESH_MS = 5000;
+const HOME_EVERY = 6;
+let refreshTimer = null;
+let ticks = 0;
 
 export function initRefreshRate() {
-    const saved = localStorage.getItem('plutos-refresh') || '3000';
-    const select = document.getElementById('setting-refresh');
-    if (select) select.value = saved;
-
-    if (window.refreshIntervalId) clearInterval(window.refreshIntervalId);
-
-    if (saved !== 'manual') {
-        const ms = parseInt(saved, 10);
-        window.refreshIntervalId = setInterval(() => {
-            if (document.getElementById('view-overview').classList.contains('active')) {
-                refreshReturnSummary();
-            }
-            if (document.getElementById('view-board').classList.contains('active')) {
-                fetchBoard();
-            }
-        }, ms);
-    }
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => {
+        if (document.hidden) return;
+        ticks++;
+        if (ticks % HOME_EVERY === 0 && document.getElementById('view-overview')?.classList.contains('active')) fetchOverview();
+        if (document.getElementById('view-board')?.classList.contains('active')) fetchBoard();
+    }, REFRESH_MS);
 }
-
-window.applyRefreshRate = function() {
-    const select = document.getElementById('setting-refresh');
-    if (!select) return;
-    const rate = select.value;
-    localStorage.setItem('plutos-refresh', rate);
-    initRefreshRate();
-    showToast('Refresh rate updated!');
-};
-
-window.clearSystemCache = function() {
-    localStorage.clear();
-    showToast('Resetting system settings...');
-    setTimeout(() => { window.location.reload(); }, 1000);
-};
 
 // One-time repair for the selected project if it still has a pre-stable-storage launcher.
 // New launchers follow install.json and need no rewrite when the app folder moves.

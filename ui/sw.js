@@ -8,7 +8,7 @@
 //   navigation (scripts, styles, images, fetch calls) are not touched at all, so the app always
 //   runs the files and data the server has now.
 // - activate: deletes every older plutos-offline-* cache. Change CACHE when the page changes.
-const CACHE = 'plutos-offline-v1';
+const CACHE = 'plutos-offline-v2';
 const OFFLINE_URL = '/__plutos_offline__';
 
 const OFFLINE_HTML = `<!doctype html>
@@ -21,13 +21,12 @@ const OFFLINE_HTML = `<!doctype html>
 body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--body);
   font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 main { max-width: 440px; width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; text-align: center; }
-h1 { color: var(--title); font-size: 1.25rem; margin: 14px 0 8px; }
+h1 { color: var(--title); font-size: 1.25rem; margin: 0 0 8px; }
 p { margin: 0 0 12px; }
 code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 button { margin-top: 8px; border: 0; border-radius: 8px; padding: 9px 22px; font: inherit; font-weight: 600; cursor: pointer; background: var(--brand); color: var(--on-brand); }
 </style></head>
 <body><main>
-<svg width="64" height="64" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0B1120"/><g transform="translate(6 6) scale(.88)"><defs><radialGradient id="c" cx="38%" cy="32%"><stop offset="0" stop-color="#FFD08A"/><stop offset="1" stop-color="#E8892B"/></radialGradient></defs><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#8B7CF6" stroke-width="5" transform="rotate(-24 50 50)"/><ellipse cx="50" cy="50" rx="45" ry="15" fill="none" stroke="#3BB3A3" stroke-width="5" transform="rotate(24 50 50)"/><circle cx="50" cy="50" r="21" fill="url(#c)"/></g></svg>
 <h1>PLUT_OS is not running</h1>
 <p>Start it with <code>START_PLUT_OS.bat</code>, the PLUT_OS app, or <code>node dashboard.mjs</code>, then retry.</p>
 <button type="button" onclick="location.reload()">Retry</button>

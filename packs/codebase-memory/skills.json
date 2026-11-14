@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "id": "codebase-memory",
+  "name": "Codebase Memory",
+  "description": "Runs the upstream codebase-memory-mcp server with npx and adds a skill saying when to use it. No upstream code is shipped: https://github.com/DeusData/codebase-memory-mcp",
+  "homepage": "https://github.com/DeusData/codebase-memory-mcp",
+  "skills": [
+    { "name": "codebase-memory", "description": "Function-level callers and change impact across many files, once plutos_code_lookup (file level) is not enough." }
+  ],
+  "mcpServers": {
+    "codebase-memory-mcp": {
+      "command": "npx",
+      "args": ["-y", "codebase-memory-mcp"],
+      "purpose": "function-level callers and change impact across many files, after plutos_code_lookup is not enough",
+      "os": { "win32": { "command": "cmd", "args": ["/c", "npx", "-y", "codebase-memory-mcp"] } }
+    }
+  }
+}

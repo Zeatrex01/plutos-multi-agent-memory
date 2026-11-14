@@ -1,4 +1,4 @@
-// Council rooms: storage, the blind rule, round/step derivation, CLI guards, the owner HTTP routes, and the
+// Council rooms: storage, the blind rule, round/step derivation, CLI guards, and the
 // seat bookkeeping around a runner. The real codex/agy runners start subscription CLIs and are not run here;
 // a fixture runner stands in for them, so this proves the harness around a seat, not the vendors' CLIs.
 import fs from 'fs';
@@ -9,7 +9,6 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRoom, readLog, readRoom, append, setDeptState, getState, visibleTo, roundStatus, listRooms, roomFile, roomDir } from '../lib/council-room.mjs';
 import { pendingFor, seatPrompt, askDepartment, seatDir, RUNNERS } from '../lib/council-seats.mjs';
-import { councilRoutes } from '../lib/council-routes.mjs';
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-council-'));
@@ -31,7 +30,7 @@ const cliIn = (project, ...a) => spawnSync(process.execPath, [path.join(APP, 'to
 const cli = (...a) => cliIn(tmp, ...a);
 
 try {
-    await check('the CLI writes where the dashboard reads: project when installed, app data when observed', () => {
+    await check('the CLI writes where the rooms are read: project when installed, app data when observed', () => {
         const observed = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-council-observed-'));
         try {
             assert.equal(cliIn(observed, 'new', 'obs', '--title', 'Observed').status, 0);
@@ -192,30 +191,6 @@ try {
         assert.ok(roomFile(tmp, 'job', 'files/design/a.md'));
         assert.equal(roomFile(tmp, 'job', '../../../../council.config.json'), null);
         assert.equal(roomFile(tmp, 'job', 'files'), null);
-    });
-    await check('owner routes read rooms, follow the project binding and append owner messages', async () => {
-        let active = tmp;
-        const sent = [];
-        const sendJson = (res, status, body) => sent.push({ status, body });
-        const requireCapturedProject = expected => { if (expected !== active) throw Object.assign(new Error('Project changed.'), { statusCode: 409 }); };
-        const routes = councilRoutes({ sendJson, coordinationRoot: () => active, requireCapturedProject,
-            readJsonBody: async req => req.body });
-        const url = q => new URL(`http://localhost/x?project=${encodeURIComponent(tmp)}${q}`);
-        await routes['GET /api/council/rooms']({}, {}, url(''));
-        assert.ok(sent.pop().body.rooms.some(r => r.slug === 'job'));
-        await routes['GET /api/council/room']({}, {}, url('&slug=nope'));
-        assert.equal(sent.pop().status, 404);
-        await routes['POST /api/council/human']({ body: { projectRoot: tmp, slug: 'job', text: 'Looks good.' } }, {});
-        assert.equal(sent.pop().body.message.from, 'human');
-        fs.writeFileSync(path.join(roomDir(tmp, 'job'), 'files', 'design', 'x.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
-        const head = {};
-        await routes['GET /api/council/file']({}, { writeHead: (s, h) => Object.assign(head, h, { status: s }), end: () => {} }, url('&slug=job&path=files/design/x.svg'));
-        assert.equal(head.status, 200);
-        assert.match(head['Content-Security-Policy'], /^sandbox/, 'a seat-written SVG cannot run script on the dashboard origin');
-        assert.equal(head['X-Content-Type-Options'], 'nosniff');
-        active = path.join(tmp, 'elsewhere');
-        await routes['GET /api/council/room']({}, {}, url('&slug=job'));
-        assert.equal(sent.pop().status, 409);
     });
     console.log(`${checks} council checks passed; seat runners need the live demo, not these fixtures.`);
 } finally { for (const dir of [tmp, home]) fs.rmSync(dir, { recursive: true, force: true }); }

@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// The Hooks panel's five hooks: the safety guard refuses exactly the owner's forbidden commands,
+// The Hooks panel's six hooks: the safety guard refuses exactly the owner's forbidden commands,
 // switching a hook on and off touches only its own entry, and the session brief reaches a hook
 // inside Claude Code's 10,000-character limit with the rules whole. Scratch folders only.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { guardRefusal } from '../lib/guard.mjs';
 import { nativePath } from '../lib/shell-segments.mjs';
-import { HOOK_TEXT_CAP, hookBrief, projectHooksStatus, setProjectHook, setCodexClaimCheck } from '../lib/project-hooks.mjs';
+import { HOOK_TEXT_CAP, hookBrief, projectHooksStatus, setProjectHook, setCodexClaimCheck, hooksTurnedOff, enableDefaultHooks, healDefaultHooks } from '../lib/project-hooks.mjs';
+import { SUBAGENT_MAP, subagentHookOutput } from '../lib/subagent-hook.mjs';
+import { wireClient } from '../lib/connect.mjs';
 import { recordPass } from '../lib/push-gate.mjs';
 import { sessionBriefParts } from '../lib/session-brief.mjs';
 import { SESSION_END_LINE } from '../lib/continuity.mjs';
@@ -19,6 +21,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-hooks-')));
 let checks = 0;
 const check = (name, fn) => { fn(); checks++; console.log(`  ok  ${name}`); };
+const checkAsync = async (name, fn) => { await fn(); checks++; console.log(`  ok  ${name}`); };
 
 try {
     check('the guard refuses force pushes, hard resets, forced cleans and non-literal recursive deletes', () => {
@@ -67,7 +70,7 @@ try {
     fs.writeFileSync(settings, JSON.stringify({ model: 'x', hooks: { PreToolUse: [theirs] } }));
 
     check('the brief refuses without the project launcher, naming it and Repair, and writes nothing', () => {
-        assert.throws(() => setProjectHook(project, 'brief', true), /no PLUT_OS launcher \(\.plutos\/plutos-launch\.mjs\)[\s\S]*Repair/);
+        assert.throws(() => setProjectHook(project, 'brief', true), /no PLUT_OS launcher \(\.plutos\/plutos-launch\.mjs\)[\s\S]*repair/i);
         assert.deepEqual(JSON.parse(fs.readFileSync(settings, 'utf8')), { model: 'x', hooks: { PreToolUse: [theirs] } });
         assert.equal(projectHooksStatus(project).hooks.find(h => h.id === 'brief').on, false);
         assert.match(projectHooksStatus(project).hooks.find(h => h.id === 'brief').problem, /launcher/);
@@ -76,8 +79,8 @@ try {
     fs.mkdirSync(path.dirname(stub), { recursive: true });
     fs.writeFileSync(stub, '// launcher stub\n');
 
-    check('switching all five on keeps the project\'s own hooks and settings', () => {
-        for (const id of ['brief', 'guard', 'push-gate', 'claim-check', 'session-close']) assert.equal(setProjectHook(project, id, true).on, true);
+    check('switching all six on keeps the project\'s own hooks and settings', () => {
+        for (const id of ['brief', 'guard', 'push-gate', 'claim-check', 'session-close', 'subagent']) assert.equal(setProjectHook(project, id, true).on, true);
         setProjectHook(project, 'guard', true);   // twice is still once
         const now = JSON.parse(fs.readFileSync(settings, 'utf8'));
         assert.equal(now.model, 'x');
@@ -90,11 +93,14 @@ try {
         assert.match(now.hooks.Stop[0].hooks[0].args[0], /claim-check\.mjs$/);
         assert.equal(now.hooks.SessionEnd.length, 1);
         assert.match(now.hooks.SessionEnd[0].hooks[0].args[0], /session-close\.mjs$/);
+        assert.equal(now.hooks.SubagentStart.length, 1);
+        assert.equal('matcher' in now.hooks.SubagentStart[0], false);   // every agent type
+        assert.match(now.hooks.SubagentStart[0].hooks[0].args[0], /subagent-hook\.mjs$/);
         assert.match(fs.readFileSync(path.join(project, '.gitignore'), 'utf8'), /\.claude\/settings\.local\.json/);
     });
     check('the status says which are on, and that the brief needs the project launcher', () => {
         const s = projectHooksStatus(project);
-        assert.deepEqual(s.hooks.map(h => h.on), [true, true, true, true, true]);
+        assert.deepEqual(s.hooks.map(h => h.on), [true, true, true, true, true, true]);
         assert.equal(s.hooks.find(h => h.id === 'brief').problem, null);
         fs.rmSync(stub);
         assert.match(projectHooksStatus(project).hooks.find(h => h.id === 'brief').problem, /launcher/);
@@ -104,8 +110,8 @@ try {
         setProjectHook(project, 'guard', false);
         const now = JSON.parse(fs.readFileSync(settings, 'utf8'));
         assert.equal(now.hooks.PreToolUse.length, 2);
-        assert.deepEqual(projectHooksStatus(project).hooks.map(h => h.on), [true, false, true, true, true]);
-        for (const id of ['brief', 'push-gate', 'claim-check', 'session-close']) setProjectHook(project, id, false);
+        assert.deepEqual(projectHooksStatus(project).hooks.map(h => h.on), [true, false, true, true, true, true]);
+        for (const id of ['brief', 'push-gate', 'claim-check', 'session-close', 'subagent']) setProjectHook(project, id, false);
         assert.deepEqual(JSON.parse(fs.readFileSync(settings, 'utf8')), { model: 'x', hooks: { PreToolUse: [theirs] } });
     });
     check('a settings file that is not JSON is left untouched and reported', () => {
@@ -125,6 +131,162 @@ try {
         assert.ok(on.problem.endsWith(`node "${path.join(root, 'lib', 'push-gate.mjs')}" run <test command>`), on.problem);
         recordPass(gated, 'tree');
         assert.equal(gate().problem, null, 'a recorded pass clears it');
+    });
+
+    check('wiring Claude Code turns on the brief, session close and subagent map, not the claim check, and says how to turn them off', () => {
+        const wired = path.join(scratch, 'wired');
+        fs.mkdirSync(path.join(wired, '.plutos'), { recursive: true });
+        execFileSync('git', ['init', '-q'], { cwd: wired });
+        fs.writeFileSync(path.join(wired, '.plutos', 'plutos-launch.mjs'), '// launcher stub\n');
+        fs.writeFileSync(path.join(wired, '.plutos', 'local.json'), JSON.stringify({ plutosRoot: '/x' }));
+        const on = () => projectHooksStatus(wired).hooks.filter(h => h.on).map(h => h.id);
+        const first = wireClient('claude-code', wired);
+        assert.deepEqual(first.hooks, { on: ['brief', 'session-close', 'subagent'], keptOff: [], error: null });
+        assert.match(first.hooksNotice, /brief, session-close and subagent tool-map hooks are on[\s\S]*node cli\.mjs hooks off brief/);
+        assert.doesNotMatch(first.hooksNotice, /dashboard/, 'the notice names the CLI command, not the dashboard');
+        assert.deepEqual(on(), ['brief', 'session-close', 'subagent']);
+        wireClient('claude-code', wired);   // twice is still once
+        const now = JSON.parse(fs.readFileSync(path.join(wired, '.claude', 'settings.local.json'), 'utf8'));
+        assert.equal(now.hooks.SessionStart.length, 1);
+        assert.equal(now.hooks.SessionEnd.length, 1);
+        assert.equal(now.hooks.SubagentStart.length, 1);
+        assert.equal(now.hooks.SubagentStart[0].matcher, undefined, 'no matcher: Explore and Plan get it too');
+        assert.equal(wireClient('cursor', wired).hooks, undefined, 'only Claude Code runs these hooks');
+
+        // Wiring again leaves the hooks as the owner set them, by whatever route.
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(wired, '.plutos', 'local.json'), 'utf8')).hooksDefaulted, ['brief', 'session-close', 'subagent']);
+        setProjectHook(wired, 'brief', false);
+        assert.deepEqual(hooksTurnedOff(wired), ['brief']);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(wired, '.plutos', 'local.json'), 'utf8')).plutosRoot, '/x');
+        const again = wireClient('claude-code', wired);
+        assert.equal(again.hooks.already, true);
+        assert.equal(again.hooksNotice, null);
+        assert.deepEqual(on(), ['session-close', 'subagent']);
+        setProjectHook(wired, 'subagent', false);
+        const byHand = JSON.parse(fs.readFileSync(path.join(wired, '.claude', 'settings.local.json'), 'utf8'));
+        delete byHand.hooks.SessionEnd;   // removed in Claude's /hooks or by hand: no hooksOff record
+        fs.writeFileSync(path.join(wired, '.claude', 'settings.local.json'), JSON.stringify(byHand));
+        wireClient('claude-code', wired);
+        assert.deepEqual(on(), [], 'a hook removed outside the panel is not switched back on');
+
+        // A project whose once-only record was lost still keeps a panel off.
+        const local = JSON.parse(fs.readFileSync(path.join(wired, '.plutos', 'local.json'), 'utf8'));
+        delete local.hooksDefaulted;
+        fs.writeFileSync(path.join(wired, '.plutos', 'local.json'), JSON.stringify(local));
+        const relost = wireClient('claude-code', wired);
+        assert.deepEqual(relost.hooks, { on: ['session-close'], keptOff: ['brief', 'subagent'], error: null });
+        assert.match(relost.hooksNotice, /switched off brief and subagent, which stays off/);
+        assert.deepEqual(on(), ['session-close']);
+
+        // On again in the panel clears the record.
+        setProjectHook(wired, 'brief', true);
+        setProjectHook(wired, 'subagent', true);
+        assert.deepEqual(hooksTurnedOff(wired), []);
+    });
+
+    check('a project defaulted before the subagent hook existed gets it once, and keeps an off after', () => {
+        const old = path.join(scratch, 'defaulted-before');
+        fs.mkdirSync(path.join(old, '.plutos'), { recursive: true });
+        fs.writeFileSync(path.join(old, '.plutos', 'plutos-launch.mjs'), '// launcher stub\n');
+        fs.writeFileSync(path.join(old, '.plutos', 'local.json'), JSON.stringify({ hooksDefaulted: true }));
+        const on = () => projectHooksStatus(old).hooks.filter(h => h.on).map(h => h.id);
+        const r = enableDefaultHooks(old);
+        assert.deepEqual(r.on, ['subagent'], 'brief and session-close were defaulted already and stay the owner\'s');
+        assert.match(r.notice, /subagent tool-map hook is now on[\s\S]*hooks off subagent/);
+        assert.deepEqual(on(), ['subagent']);
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(old, '.plutos', 'local.json'), 'utf8')).hooksDefaulted, ['brief', 'session-close', 'subagent']);
+        const r2 = enableDefaultHooks(old);
+        assert.equal(r2.already, true);
+        assert.deepEqual(r2.on, []);
+        setProjectHook(old, 'subagent', false);
+        enableDefaultHooks(old);
+        assert.deepEqual(on(), [], 'once defaulted, an off stays off');
+    });
+
+    check('a project wired before gets a new default hook where it opens (healDefaultHooks), never one never wired or switched off', () => {
+        const old = path.join(scratch, 'healed-on-open');
+        fs.mkdirSync(path.join(old, '.plutos'), { recursive: true });
+        fs.writeFileSync(path.join(old, '.plutos', 'plutos-launch.mjs'), '// launcher stub\n');
+        fs.writeFileSync(path.join(old, '.plutos', 'local.json'), JSON.stringify({ hooksDefaulted: true, hooksOff: ['brief'] }));
+        const on = () => projectHooksStatus(old).hooks.filter(h => h.on).map(h => h.id);
+        const r = healDefaultHooks(old);
+        assert.deepEqual(r.on, ['subagent']);
+        assert.deepEqual(on(), ['subagent'], 'brief and session-close stay as the owner left them');
+        assert.equal(healDefaultHooks(old), null, 'nothing due the second time');
+        const never = path.join(scratch, 'never-wired');
+        fs.mkdirSync(path.join(never, '.plutos'), { recursive: true });
+        assert.equal(healDefaultHooks(never), null);
+        assert.equal(fs.existsSync(path.join(never, '.claude', 'settings.local.json')), false, 'a project never wired to Claude Code gets no hook');
+        assert.equal(healDefaultHooks(''), null);
+        const indexSrc = fs.readFileSync(path.join(root, 'index.mjs'), 'utf8');
+        assert.match(indexSrc, /healDefaultHooks\(PROJECT_ROOT\)/, 'the SessionStart brief heals');
+    });
+
+    check('the subagent hook hands a short tool map to a PLUT_OS project and nothing elsewhere, always exiting 0', () => {
+        const kit = path.join(scratch, 'subagent-kit');
+        fs.mkdirSync(path.join(kit, '.plutos'), { recursive: true });
+        fs.writeFileSync(path.join(kit, '.plutos', 'plutos-launch.mjs'), '// launcher stub\n');
+        const bare = path.join(scratch, 'subagent-bare');
+        fs.mkdirSync(bare);
+        const script = path.join(root, 'lib', 'subagent-hook.mjs');
+        const run = (input, env = {}) => spawnSync(process.execPath, [script], { input, encoding: 'utf8', timeout: 10_000,
+            env: { ...process.env, CLAUDE_PROJECT_DIR: '', HOME: scratch, USERPROFILE: scratch, ...env } });
+        const started = Date.now();
+        const out = run(JSON.stringify({ hook_event_name: 'SubagentStart', agent_id: 'a1', agent_type: 'Explore', cwd: kit }));
+        assert.ok(Date.now() - started < 3000, 'well under the hook timeout');
+        assert.equal(out.status, 0, out.stderr);
+        const answer = JSON.parse(out.stdout).hookSpecificOutput;
+        assert.equal(answer.hookEventName, 'SubagentStart');
+        assert.ok(SUBAGENT_MAP.length < 700, `${SUBAGENT_MAP.length} characters`);
+        assert.ok(answer.additionalContext.startsWith(SUBAGENT_MAP));
+        for (const t of ['plutos_context_for_task', 'plutos_code_lookup', 'plutos_modules open research', 'judgment', 'parent named tools']) assert.ok(SUBAGENT_MAP.includes(t), t);
+        assert.equal(run('', { CLAUDE_PROJECT_DIR: kit }).stdout, out.stdout, 'CLAUDE_PROJECT_DIR is read first');
+        for (const [input, env] of [[JSON.stringify({ cwd: bare }), {}], ['not json', { CLAUDE_PROJECT_DIR: path.join(scratch, 'missing') }], ['{}', { CLAUDE_PROJECT_DIR: bare }]]) {
+            const r = run(input, env);
+            assert.equal(r.status, 0, r.stderr);
+            assert.equal(r.stdout, '', 'nothing outside a PLUT_OS project');
+        }
+    });
+
+    await checkAsync('the subagent hook leaves within its limit when stdin is a pipe that never closes', async () => {
+        const script = path.join(root, 'lib', 'subagent-hook.mjs');
+        const started = Date.now();
+        const child = spawn(process.execPath, [script], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CLAUDE_PROJECT_DIR: '', HOME: scratch, USERPROFILE: scratch } });
+        let out = '';
+        child.stdout.on('data', d => { out += d; });
+        const code = await new Promise(done => { const t = setTimeout(() => { child.kill(); done('timeout'); }, 4000); child.on('exit', c => { clearTimeout(t); done(c); }); });
+        child.stdin.destroy();
+        assert.equal(code, 0, 'exits 0 on its own');
+        assert.ok(Date.now() - started < 3000, `${Date.now() - started} ms`);
+        assert.equal(out, '');
+    });
+
+    await checkAsync('the subagent map adds one line per active pack MCP server, and skips a lister that fails', async () => {
+        const kit = path.join(scratch, 'subagent-kit');
+        const context = async listServers => {
+            const out = await subagentHookOutput(kit, { listServers });
+            return JSON.parse(out).hookSpecificOutput.additionalContext;
+        };
+        const listed = await context(async () => ['engine-pack', { name: 'modeler', description: 'Modeling\nbridge' }, { nope: 1 }]);
+        assert.ok(listed.startsWith(SUBAGENT_MAP));
+        assert.deepEqual(listed.slice(SUBAGENT_MAP.length).trim().split('\n'),
+            ['Active pack tools:', '- engine-pack (pack MCP server)', '- modeler (pack MCP server): Modeling bridge']);
+        assert.equal(await context(() => { throw new Error('boom'); }), SUBAGENT_MAP);
+        assert.equal(await context(async () => 'not a list'), SUBAGENT_MAP);
+        assert.equal(await subagentHookOutput(path.join(scratch, 'subagent-bare'), { listServers: async () => ['x'] }), '');
+    });
+
+    check('plutos connect claude-code-local switches the hooks on and prints Claude\'s own command', () => {
+        const local = path.join(scratch, 'wired-local');
+        fs.mkdirSync(path.join(local, '.plutos'), { recursive: true });
+        fs.writeFileSync(path.join(local, '.plutos', 'plutos-launch.mjs'), '// launcher stub\n');
+        const run = spawnSync(process.execPath, [path.join(root, 'cli.mjs'), 'connect', 'claude-code-local', local],
+            { encoding: 'utf8', env: { ...process.env, PLUTOS_MODE: '' } });
+        assert.equal(run.status, 0, run.stderr + run.stdout);
+        assert.match(run.stdout, /brief, session-close and subagent tool-map hooks are on/);
+        assert.match(run.stdout, /claude mcp add .*--scope local/);
+        assert.deepEqual(projectHooksStatus(local).hooks.filter(h => h.on).map(h => h.id), ['brief', 'session-close', 'subagent']);
+        assert.equal(fs.existsSync(path.join(local, '.mcp.json')), false, 'the private route writes no .mcp.json');
     });
 
     const codexProject = path.join(scratch, 'codex-project');

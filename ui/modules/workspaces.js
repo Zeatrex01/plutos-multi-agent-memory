@@ -66,11 +66,11 @@ export async function fetchWorkspaces() {
             const wsName = workspaceName(ws);
             const isAct = ws === activePath;
 
-            // Dropdown Item
+            // Dropdown item: the open project is marked by aria-current, which the stylesheet
+            // shows (bold, accent); no separate check icon.
             listEl.innerHTML += `
                 <button type="button" class="hub-workspace-option" onclick="switchWorkspace(${jsArg(ws)})"${isAct ? ' aria-current="true"' : ''}>
-                    <span style="font-size: 0.9rem; font-weight: ${isAct ? 'bold' : 'normal'}; color: ${isAct ? 'var(--brand-primary)' : 'var(--text-title)'};">${escHtml(wsName)}</span>
-                    ${isAct ? '<i data-lucide="check" style="width:14px; height:14px; color:var(--brand-primary);"></i>' : ''}
+                    <span class="hub-workspace-name">${escHtml(wsName)}</span>
                 </button>
             `;
 

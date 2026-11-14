@@ -17,7 +17,10 @@ these are the rules they do not carry.
   `session_start` first. Without MCP, read `docs/handoff/CONTINUITY.md` and `docs/handoff/CONTEXT.json`
   and re-check each cited source before relying on a claim. The brief's WORKING AGREEMENT is the
   owner's rules. Do not re-derive the project by reading everything.
-- **Before a task**, `plutos_context_for_task` names the files to open first.
+- **Tools before agents:** look-ups and lists are PLUT_OS tool calls: `plutos_context_for_task` names
+  the files to open first; `plutos_code_lookup` finds a file or symbol and its importers, the
+  `research` drawer does sourced web research (`plutos_modules` opens it). Spawn agents for judgment, and
+  name in a sub-agent's brief the tools it should use.
 - **Finish** with `session_end`: `learned` holds durable claims as `{claim, sources: [{path,
   evidence}]}` (a plain string stays unverified), `decided` holds settled choices and why, `story`
   one plain sentence for the owner. Then commit.
@@ -39,8 +42,8 @@ these are the rules they do not carry.
   the owner decides whether.
 
 ## Agents
-- Give a piece that deserves focus its own agent (`plutos_create_agent`), register it, let it
-  report on the agent board.
+- Give a piece of judgment that deserves focus its own agent (`plutos_create_agent`), register it,
+  let it report on the agent board.
 - An agent reads its `.agents/<name>/MEMORY.md` on spawn and, before finishing, adds the new
   durable lessons (decisions, pitfalls, where things live; never transcripts; about two pages).
 - A Claude Code agent's definition lives in `.claude/agents/<name>.md`; any other AI's in

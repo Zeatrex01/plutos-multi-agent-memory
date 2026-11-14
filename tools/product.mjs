@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 
 // Copied beside the executable. A file git ignores never ships. A new file not yet added to git
 // ships, so a build before a commit still works.
-export const SHIPPED_DIRS = ['ui', 'browser-client', 'scaffold', 'lib'];
+export const SHIPPED_DIRS = ['ui', 'browser-client', 'scaffold', 'lib', 'packs'];
 export const SHIPPED_FILES = ['LICENSE', 'AGENTS.md', 'package.json', 'cli.mjs', 'dashboard-ui.html', 'council.config.json', 'tools/council.mjs'];
 
 /** The files under `dir` that git tracks or does not ignore and that exist, relative to `dir`. */
