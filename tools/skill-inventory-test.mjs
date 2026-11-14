@@ -431,8 +431,9 @@ try {
         fs.rmSync(bulk, { recursive: true });
         // A named pipe cannot be backed up: refused, nothing removed.
         const fifo = path.join(target, 'pipe');
-        // Git for Windows ships an mkfifo that leaves a plain file, not a pipe: test only a real one.
-        if (spawnSync('mkfifo', [fifo]).status === 0 && fs.lstatSync(fifo).isFIFO()) {
+        // Windows has no named pipes in the file system (Git for Windows' mkfifo reports success and
+        // makes nothing usable): test only where a real one exists.
+        if (process.platform !== 'win32' && spawnSync('mkfifo', [fifo]).status === 0 && fs.existsSync(fifo) && fs.lstatSync(fifo).isFIFO()) {
             assert.throws(() => exportSkill('project-scissors', dest, { appRoot, home: hub, force: true, forceLocal: true }), /cannot be backed up whole \(pipe is not a file, a folder or a link\)/);
             assert.ok(fs.lstatSync(fifo).isFIFO());
         }
