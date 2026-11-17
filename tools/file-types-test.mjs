@@ -3,11 +3,12 @@
 // (owner decision d-a67637f8d490). Its shape, no suffix in two rows, the code map unchanged by it,
 // and the meta files recognised with their concepts.
 import assert from 'node:assert/strict';
-import { FILE_TYPES, CODE_MAP_EXTS, IMPORT_PARSED_EXTS, TASK_ONLY_EXTS, CODE_INDEX_EXTS, KNOWN_SUFFIXES, KNOWN_NAMES,
+import { FILE_TYPES, CODE_MAP_EXTS, IMPORT_PARSED_EXTS, JS_IMPORT_EXTS, TASK_ONLY_EXTS, CODE_INDEX_EXTS, KNOWN_SUFFIXES, KNOWN_NAMES,
     conceptLocations, fileTypeOf } from '../lib/file-types.mjs';
 import { CODE_EXTS } from '../lib/graphify.mjs';
 import { TASK_EXTRA_EXTS, CONVENTIONAL } from '../lib/task-context.mjs';
 import { GENERIC_EXTS } from '../lib/codeindex.mjs';
+import { ENGINES } from '../lib/engines.mjs';
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ok  ${name}`); };
@@ -27,6 +28,8 @@ check('every row has the table shape', () => {
         assert.ok(found.length, `${r.id} matches no file`);
         for (const e of r.exts || []) assert.ok(/^\.[a-z0-9]+$/.test(e), `${r.id}: ext ${e} is lower case with a dot`);
         if (r.importsParsed) assert.ok(r.inCodeMap, `${r.id}: imports are parsed only for code-map rows`);
+        if (r.importsParsed) assert.equal(r.importSyntax, 'js', `${r.id}: importSyntax ${r.importSyntax}`);
+        else assert.equal(r.importSyntax, undefined, `${r.id}: importSyntax without importsParsed`);
         if (r.inCodeMap) assert.ok(r.taskSearch && r.kind === 'code', `${r.id}: a code-map row is code the task index reads`);
     }
 });
@@ -41,8 +44,15 @@ check('the code map reads exactly the languages it read before the table, in the
         '.rs', '.java', '.cpp', '.c', '.h', '.hpp', '.gd', '.lua', '.php', '.rb', '.swift', '.kt']);
     assert.deepEqual(CODE_EXTS, CODE_MAP_EXTS);
 });
-check('relative imports are parsed for the JS/TS family only', () => {
-    assert.deepEqual([...IMPORT_PARSED_EXTS].sort(), ['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx']);
+check('relative imports are parsed for the JS/TS family; engine references come from the engines table', () => {
+    assert.deepEqual([...JS_IMPORT_EXTS].sort(), ['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx']);
+    assert.deepEqual([...IMPORT_PARSED_EXTS].sort(), [...JS_IMPORT_EXTS].sort());
+    // Each engine's own rows are the table's, in table order, among the meta rows.
+    const ids = FILE_TYPES.map(r => r.id);
+    const engineRows = ENGINES.flatMap(e => e.fileTypes.map(r => r.id));
+    const at = ids.indexOf(engineRows[0]);
+    assert.deepEqual(ids.slice(at, at + engineRows.length), engineRows);
+    assert.deepEqual(engineRows, ['godot-project', 'godot-scene', 'unity-scene', 'unity-settings', 'unreal-project']);
 });
 check('the code index reads the same languages as before', () => {
     assert.deepEqual([...GENERIC_EXTS].sort(), ['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx',

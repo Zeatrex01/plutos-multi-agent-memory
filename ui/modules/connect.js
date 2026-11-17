@@ -167,7 +167,7 @@ function row(client, projectRoot) {
     return card;
 }
 
-async function wire(clientId, button, projectRoot) {
+async function wire(clientId, button, projectRoot, force = false) {
     // Shared by the first-time "Set it up" and the "Reinstall" button on an already-wired
     // row, so the label restored on failure must be whichever one was actually clicked.
     const label = button.textContent;
@@ -177,16 +177,25 @@ async function wire(clientId, button, projectRoot) {
         const res = await fetch('/api/connect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ client: clientId, projectRoot })
+            body: JSON.stringify({ client: clientId, projectRoot, ...(force ? { force: true } : {}) })
         });
         const data = await res.json();
+        // PLUT_OS's Claude Code plugin already serves this project (lib/connect.mjs pluginGate): nothing
+        // was written. The owner can still write the entry, for teammates without the plugin.
+        if (data.success && data.plugin && !data.written) {
+            button.disabled = false;
+            button.textContent = label;
+            if (confirm(data.pluginNotice + '\n\n' + t('connect_plugin_force'))) return wire(clientId, button, projectRoot, true);
+            showToast(data.pluginNotice, 'warning');
+            return;
+        }
         if (data.success) {
             // A config git already tracks now holds this machine's paths: the server says so. Wiring
             // Claude Code also switches the session hooks on, and says how to switch them off.
             const hooksError = data.hooks && data.hooks.error ? data.hooks.error : '';
             const warn = data.warning || hooksError;
             showToast(t('connect_written') + ' ' + data.path + (data.warning ? '. ' + data.warning : '')
-                + (data.hooksNotice ? ' ' + data.hooksNotice : '') + (hooksError ? ' ' + t('connect_hooks_failed') + ' ' + hooksError : ''), warn ? 'warning' : false);
+                + (data.hooksNotice ? ' ' + data.hooksNotice : '') + (data.pluginNotice ? ' ' + data.pluginNotice : '') + (hooksError ? ' ' + t('connect_hooks_failed') + ' ' + hooksError : ''), warn ? 'warning' : false);
             await fetchConnect();
         } else {
             showToast(data.message, true);
@@ -263,9 +272,9 @@ function extraTools(recommended) {
     return li;
 }
 
-// The four tools most people use stay in view; the rest are one click away. A tool already
+// The tools most people use stay in view; the rest are one click away. A tool already
 // connected is always in view, wherever it sits in that order.
-const MAIN_TOOLS = ['claude-code', 'codex', 'gemini-cli', 'cursor'];
+const MAIN_TOOLS = ['claude-code', 'codex', 'kimi-code', 'gemini-cli', 'cursor'];
 
 function step(num, done, locked, title, status, action, ...body) {
     const li = el('li'); li.className = 'hub-step' + (done ? ' is-done' : '') + (locked ? ' is-locked' : '');

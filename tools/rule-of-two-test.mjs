@@ -17,9 +17,10 @@ const check = (name, fn) => { fn(); passed++; console.log(`  ok  ${name}`); };
 const ENGINE_DATA = {
     'lib/recommend.mjs': 'stack scanner: the engine project markers (Assets/, .uproject, project.godot) and the stack names',
     'lib/codeindex.mjs': 'stack scanner: detectProjectType and the C# scanner that reads an Assets/ tree',
+    'ui/modules/codeindex.js': 'the code index view: the vendored-folder names and the Assets/ shard rule of that scan',
     'lib/design.mjs': 'UI scanner: the engine project markers that keep a game project out of the web design line (games have their own visual-direction flow)',
-    'lib/file-types.mjs': 'file-type table read by the scanners (graphify, task context, code index): engine project and scene files (project.godot, .unity, .uproject) as rows of data',
     'lib/claim-check.mjs': 'the test-runner command list a session may claim to have run (run_tests)',
+    'lib/engines.mjs': 'the engines table, data only: each engine\'s marker, code and asset suffixes, reference rules and the pack-prepared callers database the code map (lib/graphify.mjs), the callers reader (lib/codegraph-callers.mjs) and the file-type table (lib/file-types.mjs) interpret generically (owner, 2026-11-17: the core recognises an engine, it does not know the engine)',
 };
 
 function walk(dir, keep, acc = []) {
@@ -38,6 +39,9 @@ const files = [
 ].map(full => ({ rel: path.relative(ROOT, full).replace(/\\/g, '/'), text: fs.readFileSync(full) }))
     .filter(f => !f.text.subarray(0, 1024).includes(0)).map(f => ({ rel: f.rel, lines: f.text.toString('utf8').split('\n') }));
 
+// An engine or its language by name, in any letter case (`Godot`, `GDScript`, `UNITY`).
+const ENGINE_NAME = /\b(godot|gdscript|unity|unreal|blender)\b/i;
+
 // Every line of the given files that matches, as "path:line: text", for a readable failure.
 const hits = (pattern, subset = files) => subset.flatMap(f => f.lines.map((line, i) => pattern.test(line) ? `${f.rel}:${i + 1}: ${line.trim()}` : null).filter(Boolean));
 const inside = (...dirs) => files.filter(f => dirs.some(d => f.rel.startsWith(d + '/')));
@@ -49,13 +53,13 @@ check('no pack path in the core', () => {
     assert.deepEqual(hits(/packages\/(art|design|platform-mobile|platform-pc|reporting|testing|research)\//), []);
 });
 check('no game engine identifier or path outside the stack scanners', () => {
-    assert.deepEqual(hits(/\b(godot|unity|unreal|blender)\b/, files.filter(f => !ENGINE_DATA[f.rel])), []);
+    assert.deepEqual(hits(ENGINE_NAME, files.filter(f => !ENGINE_DATA[f.rel])), []);
 });
 check('every allowed scanner file still exists and still names an engine', () => {
     for (const rel of Object.keys(ENGINE_DATA)) {
         const file = files.find(f => f.rel === rel);
         assert.ok(file, `${rel} is allowed but gone: drop it from ENGINE_DATA`);
-        assert.ok(hits(/\b(godot|unity|unreal|blender)\b/, [file]).length, `${rel} names no engine any more: drop it from ENGINE_DATA`);
+        assert.ok(hits(ENGINE_NAME, [file]).length, `${rel} names no engine any more: drop it from ENGINE_DATA`);
     }
 });
 // The names of the owner's other projects come from the same untracked list the release scan reads
@@ -68,7 +72,7 @@ const ownerTerms = fs.existsSync(termsFile)
 const packNames = new RegExp([...ownerTerms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'game pack'].join('|'));
 // The author's own name in the About box is attribution, not a pack name: the same rule the
 // release scan applies (tools/publish-core.mjs ATTRIBUTION).
-const attribution = h => { const m = h.match(/^([^:]+):\d+: (.*)$/); return m && ATTRIBUTION({ kind: 'terms', file: m[1], text: m[2] }); };
+const attribution = h => { const m = h.match(/^([^:]+):\d+: (.*)$/); return m && ATTRIBUTION({ kind: 'terms', file: m[1], text: m[2] }, [...ownerTerms, 'game pack']); };
 check('no pack name in lib/, ui/ or scaffold/ except on a dated line', () => {
     assert.deepEqual(hits(packNames, inside('lib', 'ui', 'scaffold')).filter(h => !/\d{4}-\d{2}-\d{2}/.test(h) && !attribution(h)), []);
 });

@@ -1,11 +1,16 @@
 // Which page is visible, and what to re-render on a page switch. Each page module owns its own
-// render logic; this module only decides *when* those renders run. Four pages: Home (overview),
-// Board, Projects (hub-view) and Settings.
+// render logic; this module only decides *when* those renders run. Seven pages: Home (overview),
+// Board, Activity, Code map (codeindex), Costs, Projects (hub-view) and Settings.
 import { fetchBoard } from './board.js';
 import { fetchWatcher } from './watcher.js';
 import { fetchHooks } from './hooks.js';
 import { fetchWorkspaces } from './workspaces.js';
 import { fetchOverview } from './overview.js';
+import { fetchActivityPage } from './activity-page.js';
+import { fetchCodeIndex } from './codeindex.js';
+import { fetchGraphifyStudio } from './graphify.js';
+import { fetchUsage } from './usage.js';
+import { fetchCodeburn } from './codeburn.js';
 import { fetchConnect } from './connect.js';
 import { fetchStorageInfo } from './settings.js';
 import { showUpdateStatus } from './updates.js';
@@ -48,6 +53,12 @@ window.switchView = function(viewId, btn, fromHistory) {
         showBoardUnread(false);
         fetchBoard(); fetchWatcher(); fetchHooks();
     }
+    if (viewId === 'activity') fetchActivityPage();
+    // The Code map page: the dependency graph and the folder map. Nothing here is fetched until
+    // the page is opened (vis-network itself loads on first use, codeindex.js loadVis).
+    if (viewId === 'codeindex') { fetchGraphifyStudio(); fetchCodeIndex(); }
+    // Costs: the project's ledger, then CodeBurn's last answer (it runs only from its button).
+    if (viewId === 'costs') { fetchUsage(); fetchCodeburn(); }
     // Connect rows read config files off disk, so they are re-read on every visit.
     if (viewId === 'hub-view') { fetchWorkspaces(); fetchConnect(); }
     if (viewId === 'settings') { fetchStorageInfo(); showUpdateStatus(); }

@@ -112,6 +112,21 @@ try {
     // --- after the rebind ----------------------------------------------------------------
     const again = rebindProject(undefined, newRoot);
     check('a second rebind without --from finds nothing and says to name it', /--from/.test(again.refused || ''), again.refused);
+
+    // --- Kimi Code: its project .kimi-code/mcp.json carries an absolute cwd ----------------
+    {
+        const kimi = findClient('kimi-code');
+        const kimiOld = path.join(temp, 'kimi-old'), kimiNew = path.join(temp, 'kimi-new');
+        for (const dir of [kimiOld, kimiNew]) {
+            fs.mkdirSync(path.join(dir, '.plutos'), { recursive: true });
+            fs.writeFileSync(path.join(dir, STUB_REL), '// launcher\n');
+        }
+        writeJson(configPath(kimi, kimiNew), { mcpServers: { plutos: configEntry(kimi, kimiOld), other: { url: 'https://example.invalid/mcp' } } });
+        const moved = rebindProject(kimiOld, kimiNew);
+        const after = JSON.parse(read(configPath(kimi, kimiNew)));
+        check('Kimi Code cwd is rewired to the new folder', !moved.refused && isWired(kimi, kimiNew), moved.refused || JSON.stringify(after));
+        check('Kimi Code keeps its other server', after.mcpServers.other?.url === 'https://example.invalid/mcp');
+    }
 } finally {
     fs.rmSync(temp, { recursive: true, force: true });
 }

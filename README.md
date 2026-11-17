@@ -6,11 +6,11 @@
 
 PLUT_OS is the memory and hand-off layer between one owner and several AIs: a board, a session record, checks against a false "done", a working agreement in every brief, and a dashboard over the same files.
 It is a small local app for people who use more than one AI tool on the same project (Claude Code,
-Codex, Cursor, Gemini CLI, Antigravity, Windsurf, Zed, VS Code Copilot…): the AIs coordinate
+Codex, Cursor, Gemini CLI, Antigravity, Kimi Code, Windsurf, Zed, VS Code Copilot…): the AIs coordinate
 through plain files in your repo and a local MCP server, and ask you before doing anything that
 matters.
 
-> Version `0.5.4`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
+> Version `0.5.5`. A **local PC app**, not a website: it runs on `127.0.0.1` / `localhost`
 > and nothing is sent to a cloud service. Open source under the Apache License 2.0; Node.js 22+, one runtime dependency.
 
 ![The shared board: Claude, Codex and Cursor on one project, each task with its owner and its check](docs/images/board.png)
@@ -110,6 +110,25 @@ The dashboard opens in your browser at `http://localhost:3040`. Every release is
 [releases page](https://github.com/Zeatrex01/plutos-multi-agent-memory/releases); Settings → Updates
 says when a newer one is out.
 
+### Install as a Claude Code plugin
+
+One install gives Claude Code PLUT_OS's MCP server, its session hooks and its skills in every
+project, with no `.mcp.json` or hook settings written into any of them. In Claude Code:
+
+```
+/plugin marketplace add Zeatrex01/plutos-multi-agent-memory
+/plugin install plutos@plutos
+```
+
+It installs from that repository's default branch, so it runs what is on `main` there, which can be
+ahead of the last release. It needs Node.js 22+, and Claude Code installs its npm packages, build tools
+included (about 44 MB in Claude's plugin cache). In a folder that is not a PLUT_OS project it offers one
+tool that says so and nothing else (no instructions, no data folder, about 30 ms to start); set a
+project up from the dashboard or with `node cli.mjs init`. A project wired before keeps its own entry,
+and the plugin steps aside for it once Claude runs that entry; `node cli.mjs plugin --tidy` hands the
+project's hooks over to the plugin. PLUT_OS mini is the alternative without a server: install one of
+the two. Codex, Cursor, Gemini, Kimi and the other clients connect as before.
+
 ### First run, step by step
 
 1. **Open your project.** In the dashboard, **Projects → Add project** and pick the folder of a
@@ -186,7 +205,10 @@ whether a newer release exists, with a Download link.
 3. **Coordinate.** Tasks are claimed, updated and finished on the shared board. Questions that
    need you wait on the dashboard's Home page. The Board page shows who works on what.
 
-The dashboard has four pages: Home, Board, Projects and Settings. Also there, outside it: a blind
+The dashboard has seven pages: Home, Board, Activity (usage over the last 7 days, and the work done
+and not done), Code map (build and explore the dependency graph, and the folder map), Costs (this
+project's token ledger and CodeBurn's machine-wide figures), Projects and Settings. Also there,
+outside it: a blind
 council (`tools/council.mjs`: several AIs answer independently, then you decide), a source-backed
 research studio for your AI, and skill packs switched on per project with `plutos pack`. PLUT_OS ships no field's skills of its own: a domain lives in its own pack. Off until you
 turn it on: a code graph (`graphify`).

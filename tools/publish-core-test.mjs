@@ -30,6 +30,8 @@ const repo = (name, files) => {
 };
 const run = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: 'utf8' });
 const read = (dir, rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
+// The author's name is a listed term in the working copy: read it, never write it here.
+const AUTHOR = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).author;
 
 try {
     const source = repo('source', {
@@ -107,6 +109,41 @@ try {
         assert.ok(!fs.existsSync(path.join(empty, 'tools', 'public-repo')), 'the seed folder itself is not published');
         const again = JSON.parse(run(target.dir, '--source', seeded.dir, '--json', '--dry-run').stdout);
         assert.deepEqual(again.seeded, [], 'a target that has its own files is never seeded');
+    });
+    check('the Claude Code plugin ships: its manifests\' author line is attribution, the install line names the main repository', () => {
+        const plug = repo('plugin-source', {
+            '.claude-plugin/plugin.json': `{\n  "name": "plutos",\n  "author": { "name": "${AUTHOR}" }\n}\n`,
+            '.claude-plugin/marketplace.json': `{\n  "owner": { "name": "${AUTHOR}" },\n  "plugins": []\n}\n`,
+            'README.md': `/plugin marketplace add ${AUTHOR}01/Plut_OS\n`,
+        });
+        // The terms list is local and untracked, as in the working copy; written after the commit.
+        fs.mkdirSync(path.join(plug.dir, '.plutos'));
+        fs.writeFileSync(path.join(plug.dir, '.plutos', 'release-terms.txt'), `${AUTHOR}\nHidden Client\n`);
+        const out = path.join(tmp, 'plugin-target');
+        fs.mkdirSync(out);
+        execFileSync('git', ['-C', out, 'init', '-q']);
+        const dry = JSON.parse(run(out, '--source', plug.dir, '--dry-run', '--json').stdout);
+        assert.ok(dry.ok, JSON.stringify(dry.findings));
+        assert.deepEqual(dry.changed.filter(f => f.startsWith('.claude-plugin/')).sort(), ['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json']);
+        const r = run(out, '--source', plug.dir, '--json');
+        assert.equal(r.status, 0, r.stdout + r.stderr);
+        assert.equal(read(out, 'README.md'), `/plugin marketplace add ${AUTHOR}01/plutos-multi-agent-memory\n`, 'the working repository\'s slug is rewritten');
+        assert.equal(read(out, '.claude-plugin/plugin.json'), read(plug.dir, '.claude-plugin/plugin.json'));
+        execFileSync('git', ['-C', out, 'add', '-A']);
+        execFileSync('git', ['-C', out, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'publish']);
+        assert.deepEqual(JSON.parse(run(out, '--source', plug.dir, '--dry-run', '--json').stdout).changed, [], 'a rewritten file already published is unchanged');
+    });
+    check('an attribution exempts only itself: another listed term on the same line still refuses the publish', () => {
+        const plug = repo('mixed-source', { '.claude-plugin/plugin.json': `{ "author": { "name": "${AUTHOR}" }, "description": "made for Hidden Client" }\n` });
+        fs.mkdirSync(path.join(plug.dir, '.plutos'));
+        fs.writeFileSync(path.join(plug.dir, '.plutos', 'release-terms.txt'), `${AUTHOR}\nHidden Client\n`);
+        const out = path.join(tmp, 'mixed-target');
+        fs.mkdirSync(out);
+        execFileSync('git', ['-C', out, 'init', '-q']);
+        const r = run(out, '--source', plug.dir);
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /terms \.claude-plugin\/plugin\.json:1/);
+        assert.ok(!fs.existsSync(path.join(out, '.claude-plugin')));
     });
 } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

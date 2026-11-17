@@ -17,6 +17,7 @@ import { PLUTOS_HOME_DIR, APP_ROOT } from './lib/approot.mjs';
 import { parseBoardEntries } from './lib/board.mjs';
 import { createBoardReads } from './lib/board-delta.mjs';
 import { looksLikePlutosProject } from './lib/workspaces.mjs';
+import { findPlutosProject } from './lib/project-marker.mjs';
 import { initRoadmap } from './lib/roadmap.mjs';
 import { mutateMcpStatus, pushMcpLogEntry, pruneMcpClients } from './lib/mcp-status.mjs';
 import { requiresProject, requiresProjectBinding } from './lib/tool-policy.mjs';
@@ -44,6 +45,7 @@ import { researchMcpHandlers } from './lib/research/mcp.mjs';
 import { modulesTool, openDrawerTools, drawerOfTool, isDrawerOpen, listDrawers, setDrawer } from './lib/drawers.mjs';
 import { canonicalClientName, clientFromEnv } from './lib/presence.mjs';
 import { recordUsage } from './lib/usage-log.mjs';
+import { recordFeedback, sessionFeedbackItems, FEEDBACK_KINDS, FEEDBACK_REL } from './lib/feedback.mjs';
 
 // How long plutos_ask waits before handing the ticket back. Deliberately under the ~30s tool
 // timeout MCP clients default to — see the handler for why waiting longer makes things worse,
@@ -54,6 +56,15 @@ const ASK_POLL_MS = 400;
 // The project root is fixed once at startup. The per-project launcher now derives and sets
 // it from the launcher's own file path, never from a client's stale working directory.
 const PROJECT_ROOT = resolveProjectRoot();
+
+// Started by the Claude Code plugin (.claude-plugin/plugin.json runs lib/plugin-entry.mjs, which sets
+// PLUTOS_PLUGIN=1). That entry answers by itself outside a PLUT_OS project and beside the project's own
+// usable plutos entry, and loads this server only for a project it serves: 'active'. null: not the plugin.
+const PLUGIN_MODE = process.env.PLUTOS_PLUGIN === '1' ? 'active' : null;
+// That entry bound the project nearest the folder Claude opened, so a client root in a subfolder of it
+// (Claude Code advertises the folder it was started in) is this project, as long as no nearer project
+// sits between them (lib/project-marker.mjs findPlutosProject).
+const ROOTS_OPTIONS = PLUGIN_MODE ? { owns: root => sameProjectPath(findPlutosProject(root) || '', PROJECT_ROOT) } : {};
 
 const text = (t) => ({ content: [{ type: "text", text: t }] });
 const errorText = (t) => ({ content: [{ type: "text", text: t }], isError: true });
@@ -84,7 +95,7 @@ async function requireSafeProjectBinding() {
     if (capabilities.roots) {
       try {
         const result = await server.listRoots({}, { timeout: 3000 });
-        const rootsError = advertisedRootsError(PROJECT_ROOT, result?.roots);
+        const rootsError = advertisedRootsError(PROJECT_ROOT, result?.roots, ROOTS_OPTIONS);
         if (rootsError) return errorText(`ERROR: ${rootsError}`);
       } catch (e) {
         return errorText(`ERROR: Project verification failed while reading the MCP client's workspace roots: ${e.message}. ` +
@@ -260,6 +271,10 @@ const TOOLS = [
           description: "Settled choices and why."
         },
         story: { type: "string", description: "One plain sentence for the owner, in his language." },
+        plutos_feedback: {
+          oneOf: [{ type: "string" }, { type: "array", items: { oneOf: [{ type: "string" }, { type: "object" }] } }],
+          description: "Optional: what PLUT_OS lacked or forced you to work around in this session (one line each)"
+        },
         operation_id: { type: "string", description: "Idempotency key: a retry with it records one session." }
       },
       required: ["headline"]
@@ -275,6 +290,21 @@ const TOOLS = [
         supersedes: { type: "string", description: "Id (d-…) of the decision he changed." }
       },
       required: ["decision"]
+    }
+  },
+  {
+    name: "plutos_feedback",
+    description: "PLUT_OS: One line for PLUT_OS's makers: what it lacked, forced you into, broke, or did well. Appends to docs/handoff/plutos-feedback.jsonl; commit it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: FEEDBACK_KINDS },
+        what: { type: "string" },
+        instead: { type: "string", description: "What you did instead" },
+        cost: { type: "string", description: "e.g. 10 min, 80 tool calls" },
+        evidence: { type: "string", description: "File, command or tool call" }
+      },
+      required: ["kind", "what"]
     }
   },
   {
@@ -365,7 +395,7 @@ const HANDLERS = {
       // Read even when a static check already failed: the roots name the project the fix points at.
       try {
         roots = (await server.listRoots({}, { timeout: 3000 }))?.roots || [];
-        bindingError = bindingError || advertisedRootsError(PROJECT_ROOT, roots);
+        bindingError = bindingError || advertisedRootsError(PROJECT_ROOT, roots, ROOTS_OPTIONS);
       } catch (e) {
         bindingError = bindingError || `Project verification failed while reading client roots: ${e.message}`;
       }
@@ -382,7 +412,8 @@ const HANDLERS = {
       clientRoots: roots.map(root => root.uri).filter(Boolean),
       safe: !bindingError,
       error: bindingError,
-      fix: fixFor(bindingError, roots, clientName)
+      fix: fixFor(bindingError, roots, clientName),
+      ...(PLUGIN_MODE ? { plugin: PLUGIN_MODE } : {})
     }));
   },
 
@@ -633,6 +664,18 @@ const HANDLERS = {
         operationId: args?.operation_id || args?.operationId,
         shown: [...shownIds]
       });
+      // The optional feedback lines (lib/feedback.mjs): written once, not again on an idempotent retry,
+      // and never able to fail a session already recorded.
+      let feedbackNote = '';
+      const feedbackItems = sessionFeedbackItems(args?.plutos_feedback);
+      if (feedbackItems.length && !r.duplicate) {
+        try {
+          const f = recordFeedback(PROJECT_ROOT, feedbackItems, { ai, via: 'session_end' });
+          const remapped = [...new Set(feedbackItems.filter(i => i.askedKind).map(i => i.askedKind))];
+          feedbackNote = `${f.written} feedback line${f.written === 1 ? '' : 's'} for PLUT_OS added to ${FEEDBACK_REL}.`
+            + (remapped.length ? ` Unknown kind${remapped.length === 1 ? '' : 's'} ${remapped.map(k => `"${k}"`).join(', ')} recorded as friction (kinds: ${FEEDBACK_KINDS.join(', ')}).` : '');
+        } catch (e) { feedbackNote = `WARNING: the session is recorded, but plutos_feedback was not written: ${e.message}`; }
+      }
       // Dashboard state is a mirror of authoritative continuity — never fail the session
       // after the ledger write has already succeeded.
       try {
@@ -656,6 +699,7 @@ const HANDLERS = {
         boardTidy.archived ? `${boardTidy.archived} DONE board entr${boardTidy.archived === 1 ? 'y' : 'ies'} archived off the live board.` : '',
         r.digestOverBudget ? digestBudgetNote(r.digestDecisions) : '',
         migrated,
+        feedbackNote,
         ...(tidy.lines.length
           ? ['', 'BEFORE YOU COMMIT — these docs/boards drifted this session; update them or say why not:', ...tidy.lines.map(l => `- ${l}`), '']
           : []),
@@ -672,6 +716,15 @@ const HANDLERS = {
       const migrated = migrationNote(autoMigrateDigestDecisions(PROJECT_ROOT));
       const reply = decisionReply(recordDecision(PROJECT_ROOT, args?.decision, { ai: detectClientName(), origin: 'plutos_decide', supersedes: args?.supersedes }));
       return text(migrated ? `${reply}\n${migrated}` : reply);
+    } catch (e) {
+      return errorText(`ERROR: ${e.message}`);
+    }
+  },
+
+  plutos_feedback(args) {
+    try {
+      const f = recordFeedback(PROJECT_ROOT, args || {}, { ai: detectClientName(), via: 'mcp' });
+      return text(`Recorded for PLUT_OS in ${FEEDBACK_REL} (${f.lines[0].kind}). Commit the file; the owner collects it with plutos feedback collect.`);
     } catch (e) {
       return errorText(`ERROR: ${e.message}`);
     }
@@ -701,7 +754,7 @@ const server = new Server(
     // A task-to-tool map, not a name list (feedback 2026-11-14 item 1): a session picks a tool by
     // its task. The first 512 characters cover the core tasks and the agents rule (checked in
     // tools/mcp-test.mjs): a client that defers tools decides from them when to search. plutos_code_lookup is file-level, so no line promises callers.
-    instructions: `PLUT_OS coordinates the AIs on this project. Task → tool: a session: session_start, session_end; which files a task touches: plutos_context_for_task (agents only for judgment, not look-ups); where a file or symbol is declared, what imports a file (file-level): plutos_code_lookup; sourced web research: research drawer (plutos_modules open research); owner decision: plutos_ask, record one: plutos_decide; tasks: board_read, board_update; a new agent: plutos_create_agent; status report, handover, token use: admin drawer. SAFETY: This PLUT_OS coordinator is bound to ${PROJECT_ROOT}. Use project tools only when that exact repository is the user's active workspace. If another project is active, do not call its read or write tools; reconnect through that project's launcher or project-local MCP config. Call plutos_project_info to diagnose the binding; its fix field has the exact command.`
+    instructions: `PLUT_OS coordinates the AIs on this project. Task → tool: a session: session_start, session_end; which files a task touches: plutos_context_for_task (agents only for judgment, not look-ups); where a file or symbol is declared, what imports a file (file-level): plutos_code_lookup; sourced web research: research drawer (plutos_modules open research); owner decision: plutos_ask, record one: plutos_decide; tasks: board_read, board_update; a new agent: plutos_create_agent; status report, handover, token use: admin drawer; PLUT_OS lacked something or forced a workaround: plutos_feedback. SAFETY: This PLUT_OS coordinator is bound to ${PROJECT_ROOT}. Use project tools only when that exact repository is the user's active workspace. If another project is active, do not call its read or write tools; reconnect through that project's launcher or project-local MCP config. Call plutos_project_info to diagnose the binding; its fix field has the exact command.`
   }
 );
 
@@ -749,6 +802,7 @@ function describeToolAction(name, args) {
   if (name === 'plutos_project_info') return `Read project info`;
   if (name === 'board_read') return `Read board`;
   if (name === 'plutos_context_for_task') return `Asked for task context`;
+  if (name === 'plutos_feedback') return `Feedback for PLUT_OS (${args?.kind || '?'})`;
   if (name === 'plutos_modules') return `Drawers: ${args?.action || 'list'}${args?.id ? ' ' + args.id : ''}`;
   return `Called ${name}`;
 }
@@ -970,7 +1024,8 @@ if (process.argv.includes('--brief')) {
   try {
     if (looksLikePlutosProject(PROJECT_ROOT)) {
       // A hook added to the defaults since this project was wired comes on here, once (owner offs kept).
-      healDefaultHooks(PROJECT_ROOT);
+      // Not from the plugin: its hooks come with it, and it writes no hook settings into a project.
+      if (process.env.PLUTOS_PLUGIN !== '1') healDefaultHooks(PROJECT_ROOT);
       out = hookBrief(sessionBriefParts(PROJECT_ROOT, detectClientName()));
       briefOk = true;
     }

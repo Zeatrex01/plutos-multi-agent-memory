@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup|clear|compact", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/lib/plugin-hook.mjs\" brief", "timeout": 30 }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/lib/plugin-hook.mjs\" session-close", "timeout": 15 }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/lib/plugin-hook.mjs\" subagent", "timeout": 5 }] }
+    ]
+  }
+}

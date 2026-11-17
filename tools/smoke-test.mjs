@@ -156,6 +156,11 @@ try {
     check('kit install copies AGENTS.md and shared board', fs.existsSync(path.join(projectDir, 'AGENTS.md'))
         && fs.existsSync(path.join(projectDir, 'docs', 'handoff', 'BOARD.md')));
     check('kit install generates the in-project code index', fs.existsSync(path.join(projectDir, 'docs', 'ai', 'CODEINDEX.md')));
+    const spendRead = await get('/api/spend');
+    check('opening the Costs page never starts CodeBurn (GET /api/spend is read only)', spendRead && spendRead.pending === false);
+    const tokenUsage = await get('/api/token-usage');
+    check('the token ledger lives at /api/token-usage and is not the Activity usage log',
+        tokenUsage && typeof tokenUsage === 'object' && !('records' in tokenUsage && 'skipped' in tokenUsage), JSON.stringify(tokenUsage).slice(0, 200));
     const installedStorage = await get('/api/settings/storage');
     check('installed-project context and code maps are reported as project-owned',
         installedStorage.project?.mode === 'project-owned'
@@ -304,8 +309,11 @@ try {
     // Map works without any MCP — it only needs a recognizable project (here a package.json).
     fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'demo', dependencies: { react: '^18' } }));
     fs.writeFileSync(path.join(projectDir, 'app.js'), 'export const x = 1;');
-    // The map scan used to run through POST /api/codeindex/scan (gone with the Code map page).
-    (await import('../lib/codeindex.mjs')).runCodeScan(projectDir);
+    const scan = await post('/api/codeindex/scan', {});
+    check('codebase map scan works without MCP', scan.success === true);
+    const graphIdx = await get('/api/codeindex');
+    check('codeindex API concatenates shards for the graph',
+        graphIdx.exists === true && /### Folder:/.test(graphIdx.content || ''), JSON.stringify({ exists: graphIdx.exists, start: String(graphIdx.content || '').slice(0, 120) }));
 
     // Unknown stacks (C++, Rust, Python...) must scan too — the generic fallback, not an
     // error. Regression check for: runCodeScan threw on any non-Unity/non-Node project.
@@ -342,6 +350,92 @@ try {
         && fs.readFileSync(path.join(esmDir, 'docs', 'ai', 'codeindex', '_root.md'), 'utf8').includes('legacyHelper'));
     check('catalog stays a table of shards, not the symbol dump',
         !fs.readFileSync(path.join(esmDir, 'docs', 'ai', 'CODEINDEX.md'), 'utf8').includes('bootKernel'));
+
+    // The code map's split between the project's own code and third-party code. It assumed one
+    // game layout: only the Unity shards GAME and PROJECT (Assets/_GAME, Assets/_PROJECT) counted
+    // as the project, so PLUT_OS's own checkout drew every folder as "Third-party / SDKs" and said
+    // "0 shown (0 in _GAME/_PROJECT)". The real scanner over three layouts, then the real browser
+    // module over its output (imports stubbed, as for features.js further down).
+    {
+        const codemapFixture = (name, files) => {
+            const dir = path.join(tmpRoot, 'codemap-' + name);
+            for (const [rel, body] of Object.entries(files)) {
+                fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+                fs.writeFileSync(path.join(dir, rel), body);
+            }
+            runCodeScan(dir);
+            return readIndexShards(dir, 'obsidian');
+        };
+        const nodeIndex = codemapFixture('node', {
+            'package.json': '{"name":"codemap-node","type":"module"}\n',
+            'app.js': 'export const start = 1;\n',
+            'lib/core.mjs': 'export function boot() { return 1; }\n',
+            'tools/lib/helper.mjs': 'export const help = 2;\n',
+            'src/ThirdParty/legacy.js': 'export function old() { return 3; }\n'
+        });
+        const unityIndex = codemapFixture('unity', {
+            'ProjectSettings/ProjectVersion.txt': 'm_EditorVersion: 2022.3.0f1\n',
+            'Assets/_GAME/Scripts/Player.cs': 'public class Player { public void Jump() {} }\n',
+            'Assets/_PROJECT/Managers/GameManager.cs': 'public class GameManager { public void Begin() {} }\n',
+            'Assets/AppsFlyer/Scripts/AppsFlyer.cs': 'public class AppsFlyer { public void Init() {} }\n'
+        });
+        const godotIndex = codemapFixture('godot', {
+            'project.godot': 'config_version=5\n',
+            'scripts/player.gd': 'class_name Player\nextends Node\n\nfunc jump():\n\tpass\n',
+            'addons/dialogue/plugin.gd': 'extends EditorPlugin\n\nfunc _enter_tree():\n\tpass\n'
+        });
+
+        const escSource = fs.readFileSync(path.join(__dirname, 'ui', 'esc.js'), 'utf8').replace(/^export /gm, '');
+        const mapSource = fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'codeindex.js'), 'utf8');
+        const stubbed = mapSource.replace(/^import \{ ([^}]+) \} from '([^']+)';$/gm, (line, names, from) => (from === '../esc.js' ? escSource
+            : names.split(',').map(n => n.trim()).map(n => (n === 'currentLang' ? "const currentLang = 'en';" : `const ${n} = k => (typeof k === 'string' ? k : '');`)).join('\n')));
+        const probeDir = fs.mkdtempSync(path.join(tmpRoot, 'codemapprobe-'));
+        const probe = path.join(probeDir, 'codeindex.probe.mjs');
+        fs.writeFileSync(probe, stubbed);
+        const savedWindow = globalThis.window;
+        globalThis.window = {};
+        try {
+            const map = await import(pathToFileURL(probe).href);
+            const read = index => {
+                const m = map.buildModel(index);
+                return { m, by: Object.fromEntries(m.folders.map(f => [f.key, f])), shape: JSON.stringify(m.folders.map(f => [f.key, f.thirdParty])) };
+            };
+
+            const node = read(nodeIndex);
+            check('code map: a non-engine project is its own code, not third-party',
+                node.m.rule === 'paths' && node.by.lib && !node.by.lib.thirdParty && node.by[''] && !node.by[''].thirdParty, node.shape);
+            check('code map: only a vendored folder (ThirdParty) is third-party in it',
+                node.by['src/ThirdParty'] && node.by['src/ThirdParty'].thirdParty === true
+                && node.m.folders.filter(f => f.thirdParty).length === 1, node.shape);
+            check('code map: two folders named lib stay two boxes',
+                node.by.lib && node.by['tools/lib'] && node.by['tools/lib'].label === 'tools/lib', node.shape);
+            const summary = map.mapSummary(node.m, map.capFiles(node.m, 500));
+            check('code map: the status counts the project\'s own files',
+                summary.ownFiles === 3 && summary.shown === 3 && summary.folded === 1, JSON.stringify(summary));
+
+            const unity = read(unityIndex);
+            check('code map: a Unity project with _GAME and _PROJECT keeps the owner\'s rule',
+                unity.m.rule === 'core-shards'
+                && unity.by['Assets/_GAME/Scripts'] && !unity.by['Assets/_GAME/Scripts'].thirdParty
+                && unity.by['Assets/_PROJECT/Managers'] && !unity.by['Assets/_PROJECT/Managers'].thirdParty
+                && unity.by['Assets/AppsFlyer/Scripts'] && unity.by['Assets/AppsFlyer/Scripts'].thirdParty === true, unity.shape);
+
+            const godot = read(godotIndex);
+            check('code map: Godot addons are third-party, its scripts are the project',
+                godot.m.rule === 'paths' && godot.by.scripts && !godot.by.scripts.thirdParty
+                && godot.by['addons/dialogue'] && godot.by['addons/dialogue'].thirdParty === true, godot.shape);
+
+            const vendored = ['node_modules/x/a.js', 'Plugins/Vendor/a.cpp', 'Source/ThirdParty/zlib/z.h', 'Assets/TextMesh Pro/Scripts/T.cs'];
+            const own = ['packages/app/a.js', 'plugins/site.js', 'lib/a.mjs', 'a.js'];
+            check('code map: vendored folder names, spelled the engines\' way',
+                vendored.every(p => map.isVendoredPath(p)) && !own.some(p => map.isVendoredPath(p)),
+                JSON.stringify([...vendored, ...own].map(p => [p, map.isVendoredPath(p)])));
+            const status = mapSource.match(/function updateStatus\(\)[\s\S]*?\r?\n}\r?\n/);
+            check('code map: the status line names no game layout', status && !/_GAME|_PROJECT/.test(status[0]));
+        } finally {
+            globalThis.window = savedWindow;
+        }
+    }
 
     // Doc drift: a document is stale when a file it NAMES changed after it was last committed,
     // not merely because commits happened. Both halves matter — flagging every doc on every
@@ -851,7 +945,7 @@ try {
     // reason. These checks fail if either half of that comes back — an interpreter spawn in
     // the module, or a build that reports success without producing a graph.
     {
-        const { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph } =
+        const { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph, renderGraphPage } =
             await import('../lib/graphify.mjs');
         const gDir = path.join(tmpRoot, 'graphify-fixture');
         fs.mkdirSync(path.join(gDir, 'lib'), { recursive: true });
@@ -948,16 +1042,59 @@ try {
         const codeStatus = getProjectDocGraphStatus(gDir, 'code');
         check('graphify status reads the graph back',
             codeStatus.exists === true && codeStatus.nodeCount === polyglot.nodeCount);
-        check('graphify writes the report beside the graph data', codeStatus.hasReport === true);
-        // The graph viewer page and its vendored vis-network were cut (owner decision
-        // d-51e97352b22e, 2026-11-14). A code_graph.html would load a script the dashboard no
-        // longer serves, so a build writes none and removes one an older version left.
-        check('graphify writes no html page and removes an old one', (() => {
+        check('graphify writes the html and report the routes serve',
+            codeStatus.hasHtml === true && codeStatus.hasReport === true);
+        check('graphify html loads the vendored library, not a CDN', (() => {
+            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
+            return html.includes('/ui/vendor/vis-network.min.js') && !/https?:\/\//.test(html);
+        })());
+
+        // The map froze: physics was switched off for good on stabilizationIterationsDone, so a
+        // dense graph stayed knotted in whatever shape the last iteration left and dragging a
+        // node moved nothing but that node. Stopping the simulation is right; removing it is not.
+        check('graphify html hands the layout simulation back to the reader', (() => {
+            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
+            return html.includes('id="physics"') && /setPhysics\(/.test(html)
+                && !/setOptions\(\{ physics: false \}\)/.test(html);
+        })());
+        // A flat iteration count under-solved every graph bigger than the one it was tuned on.
+        check('graphify stabilization budget grows with the graph', (() => {
+            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
+            return /stabilization: \{ iterations: ITERATIONS \}/.test(html)
+                && /DATA\.nodes\.length \* \d+/.test(html);
+        })());
+        // The owner opened the graph to a black, empty canvas under a header that said 322 nodes:
+        // vis draws nothing until the layout has settled (5.5 s there), and nothing said so.
+        check('graphify page shows its progress while the layout settles', (() => {
+            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
+            return html.includes('id="busy"') && html.includes("'stabilizationProgress'") && html.includes("'forceAtlas2Based'");
+        })());
+        check('graphify page follows the dashboard theme', (() => {
+            const html = fs.readFileSync(path.join(gDir, 'graphify-out', 'code_graph.html'), 'utf8');
+            return html.includes(':root[data-theme="dark"]') && html.includes("'plutos-mode'") && !html.includes('#0b0f19');
+        })());
+        // A graph built by an older version keeps its HTML copy; the dashboard draws today's page
+        // from the graph data instead, so a page fix does not wait for a rebuild.
+        check('the dashboard serves the graph page from the data, not a stale copy', (() => {
             const file = path.join(gDir, 'graphify-out', 'code_graph.html');
-            const none = !fs.existsSync(file);
-            fs.writeFileSync(file, '<script src="/ui/vendor/vis-network.min.js"></script>');
-            buildProjectDocGraph(gDir, 'code');
-            return none && !fs.existsSync(file);
+            const kept = fs.readFileSync(file, 'utf8');
+            fs.writeFileSync(file, '<html>an old page</html>');
+            const served = renderGraphPage(gDir);
+            fs.writeFileSync(file, kept);
+            return typeof served === 'string' && served.includes('/ui/vendor/vis-network.min.js') && !served.includes('an old page');
+        })());
+
+        check('a planted code_graph.html is never served, with bad or missing graph data', (() => {
+            const planted = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-planted-'));
+            const out = path.join(planted, 'graphify-out');
+            fs.mkdirSync(out, { recursive: true });
+            fs.writeFileSync(path.join(out, 'code_graph.html'), '<script>alert(1)</script>');
+            const noJson = renderGraphPage(planted);
+            fs.writeFileSync(path.join(out, 'code_graph.json'), JSON.stringify({ nodes: 'xx', links: [] }));
+            const badJson = renderGraphPage(planted);
+            const status = getProjectDocGraphStatus(planted, 'code');
+            fs.rmSync(planted, { recursive: true, force: true });
+            return noJson === null && badJson === null && status.nodeCount === 0;
         })());
 
         const bogus = buildProjectDocGraph(gDir, 'sideways');
@@ -1442,6 +1579,32 @@ try {
         const parsed = JSON.parse(client('antigravity').snippet);
         return parsed.mcpServers.plutos.cwd === path.resolve(projectDir);
     })(), client('antigravity').snippet);
+    check('Kimi Code is listed at its documented project layer', client('kimi-code')?.scope === 'project'
+        && client('kimi-code')?.path.endsWith(path.join('.kimi-code', 'mcp.json')), JSON.stringify(client('kimi-code')));
+    check('Kimi Code gets an explicit cwd and the mcpServers key', (() => {
+        const parsed = JSON.parse(client('kimi-code').snippet);
+        return parsed.mcpServers.plutos.cwd === path.resolve(projectDir) && parsed.mcpServers.plutos.args[0] === '.plutos/plutos-launch.mjs';
+    })(), client('kimi-code').snippet);
+    {
+        // `plutos connect kimi` resolves to the same row; writing it keeps the owner's other
+        // servers and keeps the machine-specific file out of git.
+        const { findClient, wireClient, isWired } = await import('../lib/connect.mjs');
+        check('"kimi" is an alias of the kimi-code client', findClient('kimi')?.id === 'kimi-code' && findClient('kimi-cli') === null);
+        const kimiProject = path.join(tmpRoot, 'kimi-project');
+        fs.mkdirSync(path.join(kimiProject, '.plutos'), { recursive: true });
+        fs.mkdirSync(path.join(kimiProject, '.git'), { recursive: true });
+        fs.writeFileSync(path.join(kimiProject, '.plutos', 'plutos-launch.mjs'), '// test launcher\n');
+        const kimiFile = path.join(kimiProject, '.kimi-code', 'mcp.json');
+        fs.mkdirSync(path.dirname(kimiFile), { recursive: true });
+        fs.writeFileSync(kimiFile, JSON.stringify({ mcpServers: { other: { url: 'https://example.invalid/mcp' } } }));
+        const wrote = wireClient('kimi', kimiProject);
+        const written = JSON.parse(fs.readFileSync(kimiFile, 'utf8'));
+        check('connect kimi writes .kimi-code/mcp.json and keeps other servers', wrote.written === true
+            && written.mcpServers.other?.url === 'https://example.invalid/mcp'
+            && written.mcpServers.plutos?.cwd === kimiProject && isWired(findClient('kimi-code'), kimiProject), JSON.stringify(written));
+        check('the Kimi Code config is kept out of git (it names this machine\'s folder)', wrote.ignored === true
+            && fs.readFileSync(path.join(kimiProject, '.gitignore'), 'utf8').includes('.kimi-code/mcp.json'), JSON.stringify(wrote));
+    }
     // These three have no project concept at all — a relative path would point at whatever
     // folder the tool happened to be in.
     for (const id of ['windsurf', 'zed', 'claude-desktop']) {
@@ -1800,7 +1963,7 @@ try {
     check('escHref drops javascript:', esc.escHref("javascript:fetch('/api/workspaces/repair')") === '#');
     check('escHref keeps an ordinary file link', esc.escHref('file:///C:/x.mjs').startsWith('file:'));
 
-    const RENDERERS = ['board.js', 'overview.js', 'approvals.js', 'workspaces.js', 'fsbrowse.js'];
+    const RENDERERS = ['board.js', 'overview.js', 'activity-page.js', 'approvals.js', 'workspaces.js', 'fsbrowse.js', 'codeindex.js'];
     for (const mod of RENDERERS) {
         const src = fs.readFileSync(path.join(__dirname, 'ui', 'modules', mod), 'utf8');
         check(`${mod} imports the shared escapers`, /from '\.\.\/esc\.js'/.test(src));
@@ -1812,7 +1975,8 @@ try {
     // rather than in someone's browser.
     const RAW_SINKS = [
         ['board.js', /\$\{(e\.(agent|title|status)|a\.(name|owner|role)|w\.(source|message))\}/],
-        ['overview.js', /\$\{(next|project)\}/]
+        ['overview.js', /\$\{(next|project)\}/],
+        ['codeindex.js', /\$\{(data\.(name|folder|signature|methods|fires|listens|codeLink)|folderName)\}/]
     ];
     for (const [mod, rawPattern] of RAW_SINKS) {
         const src = fs.readFileSync(path.join(__dirname, 'ui', 'modules', mod), 'utf8');
@@ -3113,18 +3277,39 @@ for (let i = 0; i < n; i++) {
     check('no workspace → hasProject false, never PLUT_OS own repo',
         noProject.hasProject === false && noProject.branch === null && noProject.fingerprint === 'no-project', JSON.stringify(noProject).slice(0, 100));
 
-    // 5z1b. The four pages (owner decision d-51e97352b22e, 2026-11-14): Home, Board, Projects and
-    // Settings, with nothing optional left to switch on or off. Text-level checks, no DOM.
+    // 5z1b. The seven pages: Home, Board, Projects and Settings (owner decision d-51e97352b22e,
+    // 2026-11-14), Activity, usage and work on a page of their own (owner, 2026-11-15), and Code map
+    // and Costs, restored after the 2026-11-14 cut took features the owner uses (2026-11-17), with
+    // nothing optional left to switch on or off. Text-level checks, no DOM.
     {
         const html = fs.readFileSync(path.join(__dirname, 'dashboard-ui.html'), 'utf8');
         const routerSrc = fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'router.js'), 'utf8');
         const views = [...html.matchAll(/<section id="([^"]+)" class="view-section/g)].map(m => m[1]).sort();
-        check('the dashboard has exactly the four kept pages', JSON.stringify(views) === JSON.stringify(['hub-view', 'view-board', 'view-overview', 'view-settings']), views.join(','));
+        check('the dashboard has exactly the seven pages', JSON.stringify(views) === JSON.stringify(['hub-view', 'view-activity', 'view-board', 'view-codeindex', 'view-costs', 'view-overview', 'view-settings']), views.join(','));
+        check('the sidebar lists the pages in order: Home, Board, Activity, Code map, Costs, Projects, Settings',
+            JSON.stringify([...html.matchAll(/class="tab-btn[^"]*" onclick="switchView\('([^']+)'/g)].map(m => m[1]))
+                === JSON.stringify(['overview', 'board', 'activity', 'codeindex', 'costs', 'hub-view', 'settings']));
+        // The owner (2026-11-17): "graph oluşturma butonu vardı onu da kaldırmışsın". The Code map page
+        // carries the button that builds the dependency graph, wired to the module that posts the build.
+        check('the Code map page has the Build the graph button',
+            /<section id="view-codeindex"[\s\S]*id="graphify-studio-build-btn"[^>]*onclick="buildCurrentGraphifyStudioGraph\(\)"/.test(html)
+            && fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'graphify.js'), 'utf8').includes('/api/graphify/scan'));
+        check('the Costs page has the ledger and the CodeBurn card, and its ledger does not read the usage log',
+            html.includes('id="usage-container"') && html.includes('id="codeburn-container"')
+            && fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'usage.js'), 'utf8').includes('/api/token-usage'));
+        check('vis-network is not loaded with the dashboard, only by the map that draws with it', !/vis-network/.test(html));
+        check('the phone bar has Home, Board and Activity',
+            JSON.stringify([...html.matchAll(/data-mob-view="([^"]+)"/g)].map(m => m[1])) === JSON.stringify(['overview', 'board', 'activity']));
         check('no optional-module tags are left in the markup', !/data-module="/.test(html));
         check('every sidebar entry opens a page the router dispatches',
             [...html.matchAll(/class="tab-btn[^"]*" onclick="switchView\('([^']+)'/g)].map(m => m[1])
                 .every(id => routerSrc.includes(`viewId === '${id}'`)));
         check('Home has the waiting-questions block and the status block', html.includes('id="home-waiting"') && html.includes('id="home-status"'));
+        {
+            const home = html.slice(html.indexOf('<section id="view-overview"'), html.indexOf('<section id="view-activity"'));
+            check('Home holds only Waiting for you and Status (usage and work live on Activity)',
+                home.includes('id="home-status"') && !/id="(home|activity)-(usage|work)/.test(home));
+        }
         // One stray </div> closes .main-container early, and every page after it renders beside
         // the menu, 64 px wide (Job 18, the Documents markup). Walk the tags with comments and
         // scripts removed: each page section must open while the main container is still open.
@@ -3175,8 +3360,20 @@ for (let i = 0; i < n; i++) {
         }
     }
 
-    // Generated graphs and indexes are kept out of the user's git status (lib/workspaces.mjs).
+    // The Code map and Costs routes obey the same project contract as every other route: reads
+    // answer empty, writes refuse with needsProject (lib/route-policy.mjs). Generated graphs and
+    // indexes are kept out of the user's git status (lib/workspaces.mjs).
     {
+        const { routeNeedsProject, PROJECT_WRITE_ROUTES } = await import('../lib/route-policy.mjs');
+        check('the Costs ledger needs an open project', routeNeedsProject('GET /api/token-usage'));
+        check('code map and graphify read routes are declared project-scoped',
+            routeNeedsProject('GET /api/graphify') && routeNeedsProject('GET /api/codeindex'));
+        check('code map and graphify write routes refuse loudly rather than silently',
+            ['POST /api/graphify/scan', 'POST /api/graphify/clean', 'POST /api/graphify/auto', 'POST /api/codeindex/scan'].every(r => PROJECT_WRITE_ROUTES.has(r)));
+        const dashSrc = fs.readFileSync(path.join(__dirname, 'dashboard.mjs'), 'utf8');
+        check('graphify clean has no destructive default mode',
+            !/searchParams\.get\('mode'\)\s*\|\|\s*'all'/.test(dashSrc));
+
         const { MACHINE_IGNORES } = await import('../lib/workspaces.mjs');
         check('generated graphs are kept out of the user\'s git status',
             MACHINE_IGNORES.includes('graphify-out/'), MACHINE_IGNORES.join(' '));

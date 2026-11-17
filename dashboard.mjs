@@ -16,6 +16,10 @@ import { hygieneReport, archiveDoneEntries } from './lib/hygiene.mjs';
 import { MCP_REQUESTS, requestMcpSetup } from './lib/mcp-requests.mjs';
 import { buildStatusReport, renderReportMarkdown } from './lib/report.mjs';
 import { buildUsageReport } from './lib/usage-report.mjs';
+import { readTokenUsage } from './lib/usage.mjs';
+import { getProjectSpend, runProjectSpend } from './lib/spend.mjs';
+import { runCodeScan, readIndexShards } from './lib/codeindex.mjs';
+import { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph, isGraphAutoRefresh, setGraphAutoRefresh, renderGraphPage, readFunctionCallers } from './lib/graphify.mjs';
 import { boardPathFor, agentBoardPathFor } from './lib/roadmap.mjs';
 import { rosterPathFor, parseRoster } from './lib/roster.mjs';
 import { removeRosterAgent } from './lib/roster-store.mjs';
@@ -24,6 +28,7 @@ import { writeBoardEntry, boardTier } from './lib/board-store.mjs';
 import { listApprovals, answerApproval, approvalTier, tierAllows, designPickImagePath } from './lib/approvals.mjs';
 import { routeNeedsProject, PROJECT_WRITE_ROUTES, NO_PROJECT_READ_PAYLOAD, NO_PROJECT_MESSAGE } from './lib/route-policy.mjs';
 import { readIdeas, addIdea } from './lib/ideas.mjs';
+import { pendingFeedbackCount, feedbackRoots, feedbackCollectAvailable } from './lib/feedback.mjs';
 import { openBrowser } from './lib/open-browser.mjs';
 import { connectionPlan, wireClient, STUB_REL } from './lib/connect.mjs';
 import { contextAutomationStatus, setContextAutomation, CONTEXT_AUTOMATION_NOTICE } from './lib/context-automation.mjs';
@@ -54,6 +59,8 @@ const LISTEN_HOST = '127.0.0.1';
 // alone — `node dashboard.mjs` in a checkout (and therefore every test run) is unchanged, or
 // the suite would spawn a browser per run.
 const PACKAGED = process.env.PLUTOS_PACKAGED === '1';
+// The feedback bridge's Home line and collect belong to PLUT_OS's own source checkout (lib/feedback.mjs).
+const FEEDBACK_COLLECT = feedbackCollectAvailable();
 if (DEV_MODE && PACKAGED) {
     console.error('Development mode runs the PLUT_OS source being edited, not a built copy. Start DEV_PLUT_OS.bat or `npm run dev` from the checkout.');
     process.exit(1);
@@ -209,7 +216,12 @@ const routes = {
             lastWorkspace: workspaces.getLastWorkspace(),
             activeDetails: workspaces.getActiveWorkspace()
                 ? workspaces.workspaceDetails(workspaces.getActiveWorkspace())
-                : null
+                : null,
+            // Machine-wide, like the list above: feedback lines in the registered projects (and this
+            // PLUT_OS) that `plutos feedback collect` has not gathered yet (lib/feedback.mjs). Home shows
+            // one quiet line when it is above 0. Only in PLUT_OS's own checkout, where collect runs;
+            // the count is memoized on the files' size and mtime, so a poll costs a stat per file.
+            feedbackPending: FEEDBACK_COLLECT ? (() => { try { return pendingFeedbackCount(feedbackRoots()); } catch { return 0; } })() : 0
         });
     },
 
@@ -379,6 +391,123 @@ const routes = {
     'GET /api/usage': (req, res, url) => {
         const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 7));
         sendJson(res, 200, buildUsageReport(coordinationRoot(), { days }));
+    },
+
+    // The Costs page (ui/modules/usage.js, ui/modules/codeburn.js). The project's own token ledger:
+    // Claude Code's transcripts for the open project only, read off this machine, no network. Its
+    // own path because GET /api/usage above is the usage log the Activity page reads.
+    'GET /api/token-usage': (req, res, url) => {
+        const force = !!(url && url.searchParams && url.searchParams.get('force'));
+        sendJson(res, 200, readTokenUsage(workspaces.getActiveWorkspace(), { force, onlyProject: true }));
+    },
+    // CodeBurn's machine-wide figures: GET answers with the last run (or standby) and never
+    // starts CodeBurn; POST /api/spend/run is the owner's button. CodeBurn is run with npx --no,
+    // so a machine without it gets standby, never a download.
+    'GET /api/spend': (req, res, url) => {
+        const p = url && url.searchParams ? url.searchParams : null;
+        sendJson(res, 200, getProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
+    },
+    'POST /api/spend/run': (req, res, url) => {
+        const p = url && url.searchParams ? url.searchParams : null;
+        sendJson(res, 200, runProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
+    },
+
+    // The Code map page (ui/modules/codeindex.js): the folder map read from the index shards, and
+    // its Scan again button.
+    'GET /api/codeindex': (req, res) => {
+        const projectRoot = indexRoot();
+        if (!projectRoot) {
+            sendJson(res, 200, { exists: false, content: '' });
+            return;
+        }
+        const shards = readIndexShards(projectRoot, 'obsidian');
+        const catalogPath = path.join(projectRoot, 'docs', 'ai', 'OBSIDIAN_INDEX.md');
+        const content = shards || (fs.existsSync(catalogPath) ? fs.readFileSync(catalogPath, 'utf8') : '');
+        if (!content) {
+            sendJson(res, 200, { exists: false, content: '' });
+            return;
+        }
+        sendJson(res, 200, {
+            exists: true,
+            content,
+            updatedAt: fs.existsSync(catalogPath) ? fs.statSync(catalogPath).mtime : new Date()
+        });
+    },
+    'POST /api/codeindex/scan': (req, res) => {
+        const projectRoot = sourceRoot();
+        if (!projectRoot) {
+            sendJson(res, 400, { success: false, message: 'No active project selected' });
+            return;
+        }
+        try {
+            const result = runCodeScan(projectRoot, { outputRoot: indexRoot() });
+            sendJson(res, 200, { success: true, ...result });
+        } catch (err) {
+            sendJson(res, 400, { success: false, message: err.message });
+        }
+    },
+
+    // The Code map page's dependency graph (ui/modules/graphify.js): its status, the Build the
+    // graph button (scan), Delete graph (clean), Keep current automatically (auto) and the page
+    // drawn in the frame (html). No project is answered at dispatch (lib/route-policy.mjs).
+    'GET /api/graphify': (req, res, url) => {
+        const projectRoot = workspaces.getActiveWorkspace();
+        const mode = url && url.searchParams ? (url.searchParams.get('mode') || 'code') : 'code';
+        sendJson(res, 200, {
+            ...getProjectDocGraphStatus(projectRoot, mode),
+            autoRefresh: isGraphAutoRefresh(projectRoot)
+        });
+    },
+    'POST /api/graphify/auto': async (req, res) => {
+        const projectRoot = workspaces.getActiveWorkspace();
+        const body = await readJsonBody(req, { fallback: null });
+        if (!body || typeof body.enabled !== 'boolean') {
+            sendJson(res, 400, { success: false, message: 'Send { enabled: true|false }.' });
+            return;
+        }
+        sendJson(res, 200, setGraphAutoRefresh(projectRoot, body.enabled));
+    },
+    'GET /api/graphify/html': (req, res) => {
+        const projectRoot = workspaces.getActiveWorkspace();
+        // Drawn from the graph data with the current page (lib/graphify.mjs renderGraphPage), so a
+        // graph built by an older version opens with today's page instead of a stale HTML copy.
+        const content = projectRoot ? renderGraphPage(projectRoot) : null;
+        if (!content) {
+            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(projectRoot ? 'The code graph is not built yet.' : 'No project selected');
+            return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(content);
+    },
+    // One script's functions and who calls each, from an engine pack's function-level code graph when
+    // the project has one (lib/graphify.mjs readFunctionCallers): read-only, the file inside the project.
+    'GET /api/graphify/callers': (req, res, url) => {
+        const projectRoot = workspaces.getActiveWorkspace();
+        const file = url && url.searchParams ? url.searchParams.get('file') : null;
+        const result = readFunctionCallers(projectRoot, file);
+        sendJson(res, result.reason === 'bad-file' ? 400 : 200, result);
+    },
+    'POST /api/graphify/scan': async (req, res, url) => {
+        const projectRoot = workspaces.getActiveWorkspace();
+        let mode = url && url.searchParams ? (url.searchParams.get('mode') || 'code') : 'code';
+        const body = await readJsonBody(req, { fallback: null });
+        if (body && body.mode) mode = body.mode;
+        const result = buildProjectDocGraph(projectRoot, mode);
+        sendJson(res, result.success ? 200 : 500, result);
+    },
+    'POST /api/graphify/clean': async (req, res, url) => {
+        const projectRoot = workspaces.getActiveWorkspace();
+        // No default: deletion is never what you get by omission.
+        let mode = url && url.searchParams ? url.searchParams.get('mode') : null;
+        const body = await readJsonBody(req, { fallback: null });
+        if (body && body.mode) mode = body.mode;
+        if (!mode) {
+            sendJson(res, 400, { success: false, message: 'Specify mode: code or all.' });
+            return;
+        }
+        const result = cleanProjectGraph(projectRoot, mode);
+        sendJson(res, result.success ? 200 : 500, result);
     },
 
     // Polled every few seconds by the live strip. Read-only and cheap on purpose: it must
@@ -627,7 +756,8 @@ const routes = {
             if (!data.projectRoot) throw new Error('A projectRoot is required to connect an AI client. Refresh the Connect view.');
             const projectRoot = requireInstalledProject();
             assertBoardProject(data);
-            const result = wireClient(data.client, projectRoot);
+            // force: the owner chose to write a Claude Code entry beside the plugin (lib/connect.mjs pluginGate).
+            const result = wireClient(data.client, projectRoot, { force: data.force === true });
             sendJson(res, 200, { success: true, ...result, installed: true, clients: connectionPlan(projectRoot, { installed: true }) });
         } catch (e) {
             sendJson(res, /changed/i.test(e.message) ? 409 : 400, { success: false, message: e.message });
@@ -744,6 +874,10 @@ const routes = {
             // PLUT_OS's own entry is written by lib/connect.mjs for the chosen client: here the
             // team-shared Claude Code file. Other clients: the Connect panel.
             const wired = entry.id === 'plutos' ? wireClient('claude-code', ws) : null;
+            if (wired?.plugin) {
+                sendJson(res, 200, { success: true, written: false, plugin: true, message: wired.pluginNotice });
+                return;
+            }
             if (!wired) installRecommendedMcp(ws, entry.id, entry.config);
             sendJson(res, 200, { success: true, approval: 'claude-code',
                 message: "Added to this project's .mcp.json. Claude Code asks you to approve it the next time it opens this project."

@@ -17,6 +17,10 @@
 //   plutos changelog <section> <text…> [--project <path>]   one line under ## [Unreleased], unread
 //   plutos idea <text…> [--project <path>]      one line in IDEAS.md, unread
 //   plutos decide "<text>" [path] [--supersedes <d-id>]   record an owner's decision the moment it is stated
+//   plutos feedback <kind> "<what>" [--instead ..] [--cost ..] [--evidence ..] [--project <path>]
+//                                      one line for PLUT_OS in the project's docs/handoff/plutos-feedback.jsonl
+//   plutos feedback collect            every registered project's lines into PLUT_OS's private feedback/
+//                                      (PLUT_OS's own source checkout only)
 //   plutos rebind <new path> [--from <old path>] [--dry-run]   rewire the clients and the hub entry after a move
 //   plutos report [path] [--days N] [--json]   where the project stands, each part labelled
 //                                      verified (git, the files) or claimed (what an AI wrote)
@@ -35,6 +39,8 @@
 //   plutos repair [path] [--apply|--restore [backup-id]]   preview, apply or undo the project repair
 //   plutos mcp add <id> [path]         a recommended MCP server (third-party ones become a board task)
 //   plutos roster rm <name> [path]     take an agent off the roster (interactive terminal only)
+//   plutos plugin [path] [--tidy]      whether the Claude Code plugin serves the project; --tidy takes
+//                                      the project's own default hooks out where it does (lib/claude-plugin.mjs)
 //
 // `node cli.mjs [path] [--interview]` without a command still runs init; a bare `node cli.mjs`
 // prints the usage and exits 0.
@@ -52,7 +58,8 @@ import fs from 'fs';
 import path from 'path';
 import { initTargetProject, describeIgnores, looksLikePlutosProject, getCoordinationRoot, healLauncherStub } from './lib/workspaces.mjs';
 import { registerCurrentInstall, readCurrentInstall } from './lib/app-data.mjs';
-import { CLIENTS, findClient, wireClient, connectionPlan, configEntry, STUB_REL } from './lib/connect.mjs';
+import { CLIENTS, findClient, wireClient, connectionPlan, configEntry, STUB_REL, SERVER_NAME, pluginGate } from './lib/connect.mjs';
+import { claudePluginStatus, claudePluginLine, claudeOwnEntry, PLUGIN_SOURCE } from './lib/claude-plugin.mjs';
 import { enableDefaultHooks, healDefaultHooks } from './lib/project-hooks.mjs';
 import { APP_ROOT, PLUTOS_HOME_DIR } from './lib/approot.mjs';
 import { isDevMode, devProjectAllowed, devProjectRefusal } from './lib/run-mode.mjs';
@@ -64,14 +71,16 @@ import { parseBoardEntries, BOARD_STATUSES } from './lib/board.mjs';
 import { readMcpStatus, projectMcpStatus } from './lib/mcp-status.mjs';
 import { waitForTask } from './lib/wait.mjs';
 
-const COMMANDS = ['init', 'connect', 'status', 'approvals', 'approve', 'reject', 'check', 'report', 'usage', 'changelog', 'idea', 'decide', 'rebind', 'update', 'audit', 'wait', 'skills', 'pack', 'memory', 'hooks', 'repair', 'mcp', 'roster', 'help'];
+const COMMANDS = ['init', 'connect', 'status', 'approvals', 'approve', 'reject', 'check', 'report', 'usage', 'changelog', 'idea', 'decide', 'feedback', 'rebind', 'update', 'audit', 'wait', 'skills', 'pack', 'memory', 'hooks', 'repair', 'mcp', 'roster', 'plugin', 'help'];
 const USAGE = `Usage: plutos <command> [path] [options]
 
   init [path] [--interview] [--client <id>]
                                 install the kit and the launcher; --client also wires that AI tool
   connect <client-id> [path]    write one AI client's MCP config (no id: list the clients)
                                 init, connect, rebind and update record this copy as the one project
-                                launchers start only if none usable is recorded; --register takes it over
+                                launchers start only if none usable is recorded; --register takes it over.
+                                With PLUT_OS's Claude Code plugin on for the project, claude-code and
+                                claude-code-local write nothing; --force writes the entry anyway
   status [path]                 readiness, board, approvals, live clients
   approvals [path] [--html]     questions waiting for the owner; --html writes a page per question
                                 with its images labelled by option (the answer is still typed)
@@ -112,6 +121,14 @@ const USAGE = `Usage: plutos <command> [path] [options]
                                 next session's brief shows it under Settled decisions.
                                 --supersedes: the id of the decision he changed. Legacy DECISION
                                 digest lines without an id become records first (count printed)
+  feedback <missing|friction|bug|worked> "<what>" [--instead <text>] [--cost <text>]
+           [--evidence <text>] [--project <path>]
+                                one line for PLUT_OS's makers: what it lacked, forced, broke or did
+                                well, in the project's docs/handoff/plutos-feedback.jsonl (commit it)
+  feedback collect              read every registered project's feedback file and PLUT_OS's own,
+                                write the lines not collected before into PLUT_OS's private
+                                feedback/YYYY-MM-DD-collected.md; print the counts (PLUT_OS's
+                                own source checkout only)
   rebind <new path> [--from <old path>] [--dry-run]
                                 after the project folder moved: rewire each AI client whose config
                                 names the old absolute path, and move the hub entry; --dry-run
@@ -165,6 +182,9 @@ const USAGE = `Usage: plutos <command> [path] [options]
   mcp add <id> [path]           a recommended MCP server: plutos wires PLUT_OS's own entry for Claude
                                 Code; a third-party one becomes a board task for your AI
   roster rm <name> [path]       take an agent off the roster (interactive terminal only)
+  plugin [path] [--tidy]        whether PLUT_OS's Claude Code plugin serves this project; --tidy
+                                takes out the project's own default hooks as PLUT_OS wrote them,
+                                lists the ones it leaves, and prints how to remove its own MCP entry
   help
 
 [path] defaults to the current folder. "node cli.mjs <path>" without a command runs init; a bare
@@ -174,14 +194,14 @@ is (the file every project launcher reads) and bring the project's launcher up t
 const argv = process.argv.slice(2);
 const fail = message => { console.error(`[!] ${message}`); process.exit(1); };
 
-// `--note a b c` takes the rest until the next flag; `--interview` and `--dry-run` are switches; `--client` takes one id.
+// `--note a b c` takes the rest until the next flag; `--interview`, `--dry-run`, `--tidy` and `--force` are switches; `--client` takes one id.
 function parseArgs(args) {
     const flags = {}, positional = [];
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (!arg.startsWith('--')) { positional.push(arg); continue; }
         const key = arg.slice(2);
-        if (key === 'interview' || key === 'dry-run') { flags[key] = true; continue; }
+        if (key === 'interview' || key === 'dry-run' || key === 'tidy' || key === 'force') { flags[key] = true; continue; }
         if (key === 'client') { flags.client = args[++i] || ''; continue; }
         const words = [];
         while (i + 1 < args.length && !args[i + 1].startsWith('--')) words.push(args[++i]);
@@ -258,12 +278,20 @@ function connect({ flags = {}, positional }) {
     if (!clientId) {
         console.log('Usage: plutos connect <client-id> [path]\n\nClient ids:');
         for (const c of CLIENTS) console.log(`  ${c.id.padEnd(20)} ${c.name}`);
+        const pluginLine = claudePluginLine(projectPath(undefined));
+        if (pluginLine) console.log(`\n${pluginLine}`);
         process.exit(1);
     }
     const client = findClient(clientId);
     if (!client) fail(`Unknown client "${clientId}". Run "plutos connect" with no id to list them.`);
     const targetPath = projectPath(positional[1]);
     refuseRealProjectInDev(targetPath);
+    // The plugin already gives Claude Code this project's server and hooks: a project entry beside it
+    // only makes the plugin's copy stand by. --force writes it anyway (a teammate without the plugin).
+    // The same gate wireClient applies for the Connect panel, the MCP store and rebind.
+    const force = 'force' in flags;
+    const gated = pluginGate(client.id, targetPath, { force });
+    if (gated) { console.log(`[i] ${gated}`); return; }
     registerInstall(targetPath, flags);
     if (client.writable === false) {
         // PLUT_OS does not write this client's config (Claude's ~/.claude.json): the owner runs the
@@ -279,11 +307,12 @@ function connect({ flags = {}, positional }) {
         return;
     }
     try {
-        const result = wireClient(clientId, targetPath);
+        const result = wireClient(clientId, targetPath, { force });
         console.log(`[+] Wrote ${client.name} config: ${result.path}`);
         if (result.ignored) console.log('[i] Added it to .gitignore: it names paths on this machine.');
         if (result.warning) console.log(`[!] ${result.warning}`);
         if (result.hooksNotice) console.log(`[i] ${result.hooksNotice}`);
+        if (result.pluginNotice) console.log(`[i] ${result.pluginNotice}`);
         if (result.hooks?.error) console.log(`[!] Hooks not switched on: ${result.hooks.error}`);
     } catch (e) {
         fail(e.message);
@@ -322,6 +351,34 @@ function status({ positional }) {
     const liveNames = Object.values(live.clients).map(c => c.client || 'unknown');
     const wired = connectionPlan(targetPath).filter(c => c.wired).map(c => c.id);
     console.log(`Clients:   live ${liveNames.length ? liveNames.join(', ') : 'none'}; wired ${wired.length ? wired.join(', ') : 'none (plutos connect <client-id>)'}`);
+    const pluginLine = claudePluginLine(targetPath, { ownEntry: claudeOwnEntry(targetPath) });
+    if (pluginLine) console.log(`Plugin:    ${pluginLine}`);
+}
+
+// Whether the Claude Code plugin (.claude-plugin/) serves this project, and with --tidy, the project's
+// own default hooks out of .claude/settings.local.json where it does. The MCP entry is the owner's to
+// remove: Claude's local scope through Claude's own command, a team-shared .mcp.json by hand (teammates
+// without the plugin still use it).
+async function plugin({ flags, positional }) {
+    const targetPath = requireInstalled(projectPath(positional[0]));
+    const ownEntry = claudeOwnEntry(targetPath);
+    const st = claudePluginStatus(targetPath);
+    if (!st.installed) {
+        console.log(`Claude Code plugin: not installed for this project. Install it in Claude Code with:\n  /plugin marketplace add ${PLUGIN_SOURCE}\n  /plugin install plutos@plutos`);
+        return;
+    }
+    console.log(claudePluginLine(targetPath, { ownEntry }));
+    if (!('tidy' in flags)) return;
+    if (!st.enabled) fail('The plugin is disabled for this project: the project\'s own entry and hooks are what serve it, so --tidy leaves them.');
+    refuseRealProjectInDev(targetPath);
+    const { removeProjectHooks, DEFAULT_HOOKS } = await import('./lib/project-hooks.mjs');
+    const { removed, kept } = removeProjectHooks(targetPath, [...DEFAULT_HOOKS]);
+    console.log(removed.length ? `[+] Took the project's own ${removed.join(', ')} hook${removed.length > 1 ? 's' : ''} out of .claude/settings.local.json; the plugin's copies run from the next session.`
+        : '[i] The project runs none of the default hooks itself in the form PLUT_OS writes.');
+    for (const k of kept) console.log(`[!] Left the project's own ${k.id} hook in ${k.file} (${k.reason}); the plugin's ${k.id} hook steps aside while it is there. Remove it by hand to hand it over.`);
+    if (ownEntry?.id === 'claude-code-local') console.log(`[i] Remove the project's own MCP entry with Claude's command: claude mcp remove --scope local ${SERVER_NAME}  (run it in ${targetPath})`);
+    if (ownEntry?.id === 'claude-code-user') console.log(`[i] Claude's user scope names plutos for every project: claude mcp remove --scope user ${SERVER_NAME} once the plugin serves them all.`);
+    if (ownEntry?.id === 'claude-code') console.log(`[i] The team-shared .mcp.json names plutos: delete that entry when every teammate uses the plugin; until then the plugin's server stands by beside it${ownEntry.usable ? '' : ` whenever Claude runs it (now: ${ownEntry.reason})`}.`);
 }
 
 async function approvals({ flags, positional }) {
@@ -528,6 +585,28 @@ async function decide({ flags, positional }) {
     if (migrated) console.log(migrated);
     const r = recordDecision(root, positional[0], { ai: flags.ai || 'plutos decide', origin: 'decide-cli', supersedes: flags.supersedes });
     console.log(decisionReply(r));
+}
+
+// The feedback bridge (lib/feedback.mjs): `feedback <kind> "<what>"` writes the line the MCP tool
+// plutos_feedback writes; `feedback collect` gathers every registered project's lines on this machine.
+async function feedback({ flags, positional }) {
+    const lib = await import('./lib/feedback.mjs');
+    if (positional[0] === 'collect') {
+        if (positional.length > 1) fail('Usage: plutos feedback collect');
+        if (!lib.feedbackCollectAvailable()) { console.log(lib.COLLECT_ELSEWHERE); return; }
+        const r = lib.collectFeedback(lib.feedbackRoots());
+        console.log(`Read ${r.read} feedback line(s) from ${r.projects} project(s): ${r.fresh} new, ${r.duplicate} collected before, ${r.malformed} malformed (skipped).`);
+        if (r.truncated.length) console.log(`Truncated: only the last ${lib.MAX_READ_BYTES / 1024 / 1024} MB were read in ${r.truncated.join(', ')}; older lines there were not collected.`);
+        if (r.file) console.log(`Wrote ${path.relative(process.cwd(), r.file) || r.file}.`);
+        return;
+    }
+    const [kind, ...words] = positional;
+    if (!kind || !words.length) fail(`Usage: plutos feedback <${lib.FEEDBACK_KINDS.join('|')}> "<what>" [--instead <text>] [--cost <text>] [--evidence <text>] [--project <path>]  |  plutos feedback collect`);
+    const root = requireInstalled(projectPath(flags.project));
+    const { clientFromEnv } = await import('./lib/presence.mjs');
+    const r = lib.recordFeedback(root, { kind, what: words.join(' '), instead: flags.instead, cost: flags.cost, evidence: flags.evidence },
+        { ai: flags.ai || clientFromEnv(process.env) || 'plutos feedback', via: 'cli' });
+    console.log(`Added to ${path.relative(process.cwd(), r.file) || r.file}. Commit it.`);
 }
 
 // plutos rebind <new path> [--from <old path>] (lib/rebind.mjs): after a project folder moved, rewire
@@ -844,6 +923,7 @@ switch (command) {
     case 'changelog': await changelog(parsed); break;
     case 'idea': await idea(parsed); break;
     case 'decide': await decide(parsed).catch(e => fail(e.message)); break;
+    case 'feedback': await feedback(parsed).catch(e => fail(e.message)); break;
     case 'rebind': await rebind(parsed).catch(e => fail(e.message)); break;
     case 'update': await update(parsed); break;
     case 'audit': await audit(parsed); break;
@@ -856,5 +936,6 @@ switch (command) {
     case 'repair': await repair(parsed); break;
     case 'mcp': await mcp(parsed); break;
     case 'roster': await roster(parsed); break;
+    case 'plugin': await plugin(parsed); break;
     default: console.log(USAGE);
 }

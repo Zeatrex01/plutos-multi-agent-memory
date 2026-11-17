@@ -25,15 +25,25 @@ project carries the kit.
 resume one. With a project open it opens on **Home**: the questions your AIs are waiting on you for
 (with their images and options), then a short status: the project, how many board items are open,
 the last session's next step, whether the hooks are on, and whether an AI is connected. The menu has
-four pages: **Home**, **Board** (tasks, plus the snapshot, watchers and hooks), **Projects** (add a
+seven pages: **Home**, **Board** (tasks, plus the snapshot, watchers and hooks), **Activity** (usage
+over the last 7 days per AI and tool, and the work: the last 5 sessions and the board's done and not
+done items), **Code map** (**Build the graph** draws which file depends on which, and the folder map
+shows the project's folders and files; it says which engine it recognised, and inside an engine project it
+also links the files the engine links: in Godot, scripts and `.tscn`/`.tres` scenes by their `res://` paths
+(preload, extends, class, scene); in Unity, scenes, prefabs and materials to the scripts and assets their
+`guid:` lines name (uses); an Unreal project is recognised only, since its assets are binary. A click on a
+script lists its functions and who calls each when the engine pack's code tools have built `.codegraph/`
+(today Godot's `.gd`)), **Costs** (this project's token ledger and CodeBurn's
+machine-wide figures), **Projects** (add a
 project, install the kit, connect an AI, repair links) and **Settings** (language, light/dark,
 updates, where the data lives). The address keeps the page (`#board`), so a reload stays on it and
 Back returns to the last one.
 
-The report, the story of the sessions, the code map and graph, research, skill packs and the council
-are read by your AIs through the MCP tools and by you in a terminal (`plutos report`, `plutos pack`,
+The report, the story of the sessions, research, skill packs and the council are read by your AIs
+through the MCP tools and by you in a terminal (`plutos report`, `plutos pack`,
 `node tools/council.mjs`); the dashboard pages that showed them were removed on 2026-11-14 (owner
-decision d-51e97352b22e: keep the dashboard, make it plain).
+decision d-51e97352b22e: keep the dashboard, make it plain). The Code map and Costs pages that went
+with them came back on 2026-11-17.
 
 ## 2. Installing PLUT_OS itself
 
@@ -272,6 +282,7 @@ Current client adapters:
 | VS Code (Copilot) | `.vscode/mcp.json` | project | documented `${workspaceFolder}` token; top-level key is `servers` |
 | Gemini CLI | `.gemini/settings.json` | project | explicit `cwd` |
 | Google Antigravity | `.agents/mcp_config.json` | workspace | explicit `cwd` |
+| Kimi Code (CLI and VS Code extension) | `.kimi-code/mcp.json` | trusted project | explicit `cwd` |
 | Codex CLI | `.codex/config.toml` | trusted project | relative launcher + `PLUTOS_CODEX_PROJECT_CONFIG=1` marker |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | machine | absolute |
 | Zed | user `settings.json` (`context_servers`) | machine | absolute |
@@ -280,7 +291,7 @@ Current client adapters:
 **Why binding matters.** A bare relative argument only works if a client starts the server
 from the expected directory. Where a vendor documents a project variable or `cwd`, PLUT_OS
 uses it. Otherwise the entry is visibly machine-specific and uses an absolute path. When PLUT_OS
-writes a config like that (Cursor, Gemini CLI, Antigravity), it adds that exact file to the
+writes a config like that (Cursor, Gemini CLI, Antigravity, Kimi Code), it adds that exact file to the
 project's `.gitignore`. If git already tracks the file, PLUT_OS says so and leaves it tracked:
 `git rm --cached <file>` untracks it, and also deletes it for teammates when they pull.
 
@@ -302,10 +313,65 @@ writing. The launcher derives the project from its own `.plutos/` location, and 
 server compares an independent client root when available. A mismatch — including a stale
 global Codex registration — blocks project reads and writes instead of guessing.
 
+### Claude Code as a plugin (no per-project wiring)
+
+PLUT_OS is also a Claude Code plugin: its repository is a plugin marketplace named `plutos` holding
+one plugin, `plutos` (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`). Installed
+once, it gives Claude Code the PLUT_OS MCP server, the default hooks (session brief, session close,
+subagent tool map) and PLUT_OS's skills (design-ui-direction, project-scissors) in every project,
+and PLUT_OS writes no `.mcp.json` and no hook settings into any of them:
+
+```
+/plugin marketplace add Zeatrex01/plutos-multi-agent-memory
+/plugin install plutos@plutos                                   (--scope user is the default)
+```
+
+Claude Code installs the plugin from the default branch of that repository, so it runs what is on
+`main` there, which can be ahead of the last release. Claude Code copies the repository and installs
+its npm packages, build tools included (`npm ci`, no way for a plugin to leave devDependencies out):
+about 44 MB in its plugin cache, of which esbuild, postject and resedit, which only `npm run build`
+uses, are about 17 MB.
+
+- **Only in PLUT_OS projects.** A session opened in a project or any folder inside it (up to its git
+  root) is that project's. In any other folder the plugin's server answers by itself with one tool,
+  `plutos_project_info`, which says the folder is not a PLUT_OS project, and no instructions; it
+  loads none of PLUT_OS and creates no data folder (measured: initialize answered in about 30 ms,
+  about 50 MB of memory, against about 150 ms and 78 MB for the full server). Its hooks exit at once
+  without output. The always-on cost in such a folder is that one tool (about 60 tokens) and the
+  skills' descriptions (about 300 tokens).
+- **One server, one brief.** A project wired before the plugin keeps its own entry and its own hooks.
+  The plugin's server stands by (no tools, no instructions) only while that entry is one Claude Code
+  will run: Claude's local or user scope, or a `.mcp.json` entry you approved in Claude (not declined)
+  whose launcher finds a PLUT_OS install. A `.mcp.json` entry still waiting for approval, declined or
+  broken leaves the plugin serving the project. Each plugin hook steps aside where the project runs
+  PLUT_OS's own copy of it (written either way, `node … --brief` as one string included). A hook you
+  switched off (`plutos hooks off brief`) stays off for the plugin too.
+- **Handing a project over.** `plutos plugin [path]` says whether the plugin serves the project;
+  `plutos plugin --tidy` takes out the project's own default hooks exactly as PLUT_OS wrote them
+  (without recording them as off), lists the ones it leaves (one you changed, or one in the
+  team-shared `.claude/settings.json`) and prints how to remove the project's own MCP entry. `plutos
+  status` shows a `Plugin:` line.
+- **No second entry by accident.** While the plugin is on for a project, every Claude Code wiring
+  writes nothing and says why: `plutos connect claude-code` (or `claude-code-local`), the Connect
+  panel, the recommended-tools entry for PLUT_OS and `plutos rebind`. `plutos connect … --force`, or
+  confirming in the Connect panel, writes the entry anyway (for teammates without the plugin).
+- **Opt-in hooks stay per project.** The guard, the push gate and the claim check are switched in
+  the Hooks panel as before; so is the context capture, which calls the server named `plutos` and so
+  needs the project's own entry (the plugin's server is `plugin:plutos:plutos`).
+- **PLUT_OS mini is an alternative, not a companion.** The mini pack (`plutos-mini`, no server) also
+  brings project-scissors; with both installed, Claude lists that skill twice. Use one of the two.
+- **Updates** come with a new PLUT_OS version (`/plugin marketplace update plutos`). The plugin runs
+  from Claude Code's own copy and reads the same data folder as your projects' launchers
+  (`PLUTOS_HOME`, then the project's `.plutos/local.json`, then the default); your PLUT_OS install
+  and its dashboard are unchanged.
+
+Codex, Cursor, VS Code, Gemini CLI, Antigravity, Kimi Code, Windsurf, Zed and Claude Desktop are
+connected per project as below; nothing about them changes.
+
 ### Per client: how each one is connected
 
 `plutos connect <id>` and `plutos init --client <id>` write the same entry the Connect panel does
-(`lib/connect.mjs`). What each of the five main tools gets:
+(`lib/connect.mjs`). What each of the six main tools gets:
 
 - **Claude Code** — `claude-code-local` hands the entry to `claude mcp add` (private to this
   project, stored by Claude in `~/.claude.json`, which PLUT_OS never edits); `claude-code` writes the
@@ -326,6 +392,13 @@ global Codex registration — blocks project reads and writes instead of guessin
   the kit's `GEMINI.md` imports `AGENTS.md`.
 - **Antigravity** — `antigravity` writes `.agents/mcp_config.json` with an explicit `cwd`,
   gitignored. No hook is written for it (its format is not verified, §7, "Board watchers").
+- **Kimi Code** — `kimi-code` (or `plutos connect kimi`) writes `.kimi-code/mcp.json` with an
+  explicit `cwd`, gitignored. Moonshot AI's `kimi` CLI and its VS Code extension "Kimi Code" read
+  the same project file, and load it only after you trust the folder (headless runs:
+  `KIMI_CODE_TRUST_WORKSPACE=1`); `/mcp` shows the connection. It reads `AGENTS.md` itself and calls
+  `session_start` first. Its hooks live only in the user's `~/.kimi-code/config.toml`, which
+  PLUT_OS does not write. The archived Python "Kimi CLI" (`~/.kimi/`) is not supported: `kimi
+  migrate` moves its MCP servers to Kimi Code (`docs/research/2026-11-17-kimi-clients.md`).
 
 VS Code (Copilot), Windsurf, Zed and Claude Desktop are in the table above; the push gate's git
 `pre-push` half (§7) meets a push from any of them.
@@ -547,6 +620,8 @@ current folder). The commands, as `plutos help` lists them:
   called, sub-agent starts against tool calls, and days with commits but no session record. It only reads.
 - `audit [path] [--json] [--clean]` reports what older PLUT_OS versions left in a project and what else
   needs a look, and `--clean` moves the leftovers into the Hub (§3, "Auditing an older project").
+- `plugin [path] [--tidy]` says whether PLUT_OS's Claude Code plugin serves the project, and `--tidy` takes
+  the project's own default hooks out where it does (§3, "Claude Code as a plugin").
 - `skills [path]` lists the project's Agent Skills; `pack add <folder>`, `pack list`, `pack on <id>
   [path]`, `pack off <id> [path]` and `pack forget <id>` manage packs; `skills inventory [path]
   [--json]` lists every skill on the machine with its duplicates and exports, and `skills export
@@ -1014,7 +1089,9 @@ restart or reload Claude Code after either change.
 `plutos_usage` gives your AI the open project's own ledger: Claude Code's records for this folder,
 read on this computer, split by agent, model and session (work is output plus thinking; cache reads
 are shown apart). Nothing is installed or downloaded and nothing leaves the machine. The dashboard's
-AI costs page and its CodeBurn button were removed on 2026-11-14.
+**Costs** page shows the same ledger (`GET /api/token-usage`), and below it CodeBurn's figures for
+the whole computer, by range and day: they come from `npx --no codeburn` only when you press its
+button, so a computer without CodeBurn shows standby and nothing is downloaded.
 
 ### Usage log — which AIs used which tools
 

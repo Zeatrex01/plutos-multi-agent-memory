@@ -25,4 +25,3 @@ This module has no PLUTOS-only machinery; the same rules apply everywhere. Only 
 ## Relation to other plutos modules
 
 - `plutos-playbook` stages a game from idea to decision; project-scissors keeps each build stage scoped and structured. For games, the core user story is the playbook stage's gate (for example: playable start to end).
-- `plutos-godot:godot-planner` covers Godot-specific session planning; use project-scissors for the scope contract and architecture, godot-planner for engine-specific sequencing.

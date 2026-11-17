@@ -23,7 +23,8 @@ these are the rules they do not carry.
   name in a sub-agent's brief the tools it should use.
 - **Finish** with `session_end`: `learned` holds durable claims as `{claim, sources: [{path,
   evidence}]}` (a plain string stays unverified), `decided` holds settled choices and why, `story`
-  one plain sentence for the owner. Then commit.
+  one plain sentence for the owner, `plutos_feedback` what PLUT_OS lacked or forced (also a tool).
+  Then commit.
 - **Language:** everything is English, because other AIs read it, except `story`, which is in the
   language the owner speaks to you in.
 - **Rule 0:** if `docs/handoff/PROJECT_INTERVIEW.md` exists with blank `> answer:` lines, ask the

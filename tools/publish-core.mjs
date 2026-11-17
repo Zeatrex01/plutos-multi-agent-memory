@@ -43,10 +43,52 @@ export const TARGET_OWN = [
 // A finding of these kinds stops the publish. Turkish lines are expected (the Turkish UI strings).
 const BLOCKING = ['personal', 'secret', 'maps', 'terms'];
 // The author's own name is not a leak where the product names its author: the licence, the
-// About box and its links, and the main repository's own address (the clone line, the server's link).
-// Minified vendor files only match a term by chance.
-export const ATTRIBUTION = f => f.kind === 'terms' && (f.file === 'LICENSE' || f.file === 'NOTICE' || (f.file === 'package.json' && /"author"/.test(f.text)) || f.file.startsWith('ui/vendor/')
-    || /settings_about_desc|youtube\.com\/c\/Zeatrex\/|github\.com\/Zeatrex01"|github\.com\/Zeatrex01\/(?:Plut-os|plutos-multi-agent-memory)\b|'Zeatrex01\/plutos-multi-agent-memory'|built and maintained by Zeatrex\b/.test(f.text));
+// About box and its links, the main repository's own address (the clone line, the server's link,
+// the plugin's install line) and the Claude Code plugin's manifests (their author and the
+// marketplace's owner). Minified vendor files only match a term by chance. Only the attribution
+// itself is exempt: it is blanked and the rest of the line is tested again against every term the
+// scan found on it, so another name on the same line still stops the publish.
+const ATTRIBUTION_FILES = f => f.file === 'LICENSE' || f.file === 'NOTICE' || f.file.startsWith('ui/vendor/');
+// The author's name and account come from package.json, so this file does not carry them itself.
+const esc = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const AUTHOR_NAME = String(JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).author || '\0');
+const AUTHOR = esc(AUTHOR_NAME), ACCOUNT = `${AUTHOR}01`;
+const ATTRIBUTION_MARKS = [
+    [f => f.file === 'package.json', /"author":\s*"[^"]*"/g],
+    [f => /^\.claude-plugin\/(?:plugin|marketplace)\.json$/.test(f.file), /"(?:author|owner)":\s*\{\s*"name":\s*"[^"]*"\s*\}/g],
+    [null, /^.*settings_about_desc.*$/g],
+    [null, new RegExp(`youtube\\.com/c/${AUTHOR}/`, 'g')],
+    [null, new RegExp(`github\\.com/${ACCOUNT}"`, 'g')],
+    [null, new RegExp(`github\\.com/${ACCOUNT}/(?:Plut-os|plutos-multi-agent-memory)\\b`, 'g')],
+    // The working repository's own slug is rewritten to the main repository's on the way out (REWRITE).
+    [null, new RegExp(`\\b${ACCOUNT}/(?:plutos-multi-agent-memory|Plut_OS)\\b`, 'g')],
+    [null, new RegExp(`built and maintained by ${AUTHOR}\\b`, 'g')],
+];
+/** Whether a release-scan finding is the author's attribution and nothing else. `terms` (default: the
+ *  ones scanRelease found on the line) are tested again on the line with the attribution blanked;
+ *  without any, the line's attribution alone decides. */
+export const ATTRIBUTION = (f, terms = f.terms) => {
+    if (f.kind !== 'terms') return false;
+    if (ATTRIBUTION_FILES(f)) return true;
+    let rest = f.text;
+    for (const [applies, re] of ATTRIBUTION_MARKS) if (!applies || applies(f)) rest = rest.replace(re, ' ');
+    if (rest === f.text) return false;
+    if (!Array.isArray(terms) || !terms.length) return true;
+    return !terms.some(term => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(rest));
+};
+
+// The install source the docs and `plutos plugin` name (lib/claude-plugin.mjs PLUGIN_SOURCE) is this
+// working repository; the main repository's copy names itself. Text files only, byte for byte otherwise.
+export const REWRITE = [[`${AUTHOR_NAME}01/Plut_OS`, `${AUTHOR_NAME}01/plutos-multi-agent-memory`]];
+/** A file's content as the main repository receives it. */
+export function publishedContent(file) {
+    const buf = fs.readFileSync(file);
+    if (buf.includes(0)) return buf;
+    let text = buf.toString('utf8');
+    if (!REWRITE.some(([from]) => text.includes(from))) return buf;
+    for (const [from, to] of REWRITE) text = text.split(from).join(to);
+    return Buffer.from(text, 'utf8');
+}
 
 const SEEDS = 'tools/public-repo';
 const isPrivate = file => PRIVATE.some(p => p.endsWith('/') ? file.startsWith(p) : file === p);
@@ -61,7 +103,7 @@ export function planPublish(source, target) {
     const remove = tracked(target).filter(f => !shipped.has(f) && !own.has(f));
     const changed = copy.filter(f => {
         const to = path.join(target, f);
-        return !fs.existsSync(to) || !fs.readFileSync(to).equals(fs.readFileSync(path.join(source, f)));
+        return !fs.existsSync(to) || !fs.readFileSync(to).equals(publishedContent(path.join(source, f)));
     });
     const seed = TARGET_OWN.filter(f => !fs.existsSync(path.join(target, f)) && fs.existsSync(path.join(source, SEEDS, f)));
     return { copy, changed, remove, seed };
@@ -85,7 +127,7 @@ export function publishCore({ source, target, dryRun = false }) {
         for (const f of plan.changed) {
             const from = path.join(source, f), to = path.join(target, f);
             fs.mkdirSync(path.dirname(to), { recursive: true });
-            fs.copyFileSync(from, to);
+            fs.writeFileSync(to, publishedContent(from));
             fs.chmodSync(to, fs.statSync(from).mode & 0o777);
         }
         for (const f of plan.seed) {

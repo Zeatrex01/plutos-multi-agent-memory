@@ -1,0 +1,12 @@
+{
+  "name": "plutos",
+  "owner": { "name": "Zeatrex" },
+  "description": "PLUT_OS as a Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "plutos",
+      "source": "./",
+      "description": "PLUT_OS shared project memory and multi-AI coordination for Claude Code."
+    }
+  ]
+}

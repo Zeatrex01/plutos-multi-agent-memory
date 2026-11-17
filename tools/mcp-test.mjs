@@ -135,11 +135,12 @@ try {
         canonicalClientName('codex-mcp-client') === 'Codex' && clientFromEnv({ CLAUDECODE: '1' }) === 'Claude Code');
     check('handshake names map to canonical names', canonicalClientName('claude-code') === 'Claude Code'
         && canonicalClientName('cursor') === 'Cursor' && canonicalClientName('gemini-cli-mcp-client') === 'Gemini CLI'
-        && canonicalClientName('antigravity') === 'Antigravity' && canonicalClientName('Visual Studio Code') === 'VS Code');
+        && canonicalClientName('antigravity') === 'Antigravity' && canonicalClientName('Visual Studio Code') === 'VS Code'
+        && canonicalClientName('kimi-code') === 'Kimi Code');
     check('an unknown handshake name is not returned raw', canonicalClientName('plutos-mcp-test') === null && canonicalClientName('') === null);
     check('GEMINI_CLI means Gemini CLI, and an inherited API key names no client',
         clientFromEnv({ GEMINI_CLI: '1' }) === 'Gemini CLI' && clientFromEnv({ ANTIGRAVITY_AGENT: '1' }) === 'Antigravity'
-        && clientFromEnv({ GEMINI_API_KEY: 'k', GOOGLE_API_KEY: 'k', CODEIUM_API_KEY: 'k' }) === null && clientFromEnv({ CODEX_HOME: '/x' }) === 'Codex');
+        && clientFromEnv({ GEMINI_API_KEY: 'k', GOOGLE_API_KEY: 'k', CODEIUM_API_KEY: 'k', KIMI_API_KEY: 'k', KIMI_CODE_HOME: '/x' }) === null && clientFromEnv({ CODEX_HOME: '/x' }) === 'Codex');
 
     // --- 1. Lifecycle -----------------------------------------------------------------------
     console.log('\n— lifecycle —');

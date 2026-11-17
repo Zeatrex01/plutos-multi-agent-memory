@@ -1,0 +1,18 @@
+{
+  "name": "plutos",
+  "version": "0.5.5",
+  "description": "PLUT_OS shared project memory and multi-AI coordination: the plutos MCP server plus the session brief, session close and subagent tool-map hooks, active only in folders that are PLUT_OS projects.",
+  "author": { "name": "Zeatrex" },
+  "homepage": "https://github.com/Zeatrex01/plutos-multi-agent-memory",
+  "repository": "https://github.com/Zeatrex01/plutos-multi-agent-memory",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "multi-agent", "coordination", "project-memory"],
+  "mcpServers": {
+    "plutos": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/lib/plugin-entry.mjs"],
+      "env": { "PLUTOS_PROJECT_ROOT": "${CLAUDE_PROJECT_DIR}", "PLUTOS_PLUGIN": "1" }
+    }
+  },
+  "hooks": "./.claude-plugin/hooks.json"
+}

@@ -1,8 +1,10 @@
 // Home: the page a project opens on (owner decision d-51e97352b22e, 2026-11-14). One focal block,
 // the questions waiting for the owner (#home-waiting, painted by approvals.js), then a short status
-// list (#home-status): project, open board items, last session's Next, hooks, AI link, usage.
+// list (#home-status): project, open board items, last session's Next, hooks, AI link, usage. The full
+// usage and work views live on their own page, Activity (activity-page.js; owner, 2026-11-15).
 // Composed from views that already exist (/api/workspaces, /api/report, /api/hooks,
-// /api/mcp/status, /api/usage); nothing here is stored.
+// /api/mcp/status, /api/usage); nothing here is stored. /api/workspaces also carries feedbackPending
+// (lib/feedback.mjs): one quiet line under the list while projects hold uncollected feedback lines.
 import { t } from '../i18n.js';
 import { escHtml } from '../esc.js';
 import { emptyState } from './page.js';
@@ -26,7 +28,13 @@ export function usageLine(usage) {
         .replace('{sessions}', n.sessionsStarted || 0))}</span>`;
 }
 
-export function statusHtml({ project, report, hooks, mcp, usage }) {
+// The feedback bridge's reminder: nothing at 0, one muted line otherwise.
+export function feedbackLine(pending) {
+    const n = Number(pending) || 0;
+    return n > 0 ? `<p class="home-status-muted home-feedback">${escHtml(t('home_feedback_pending').replace('{n}', n))}</p>` : '';
+}
+
+export function statusHtml({ project, report, hooks, mcp, usage, feedbackPending = 0 }) {
     const stats = report?.stats || {};
     const open = (stats.todo || 0) + (stats.inProgress || 0) + (stats.blocked || 0);
     const blocked = stats.blocked || 0;
@@ -36,7 +44,7 @@ export function statusHtml({ project, report, hooks, mcp, usage }) {
     const connected = mcp?.state === 'connected';
 
     const rows = [
-        row(t('sys_project'), `<span class="home-status-value">${escHtml(project)}</span>`),
+        row(t('home_project'), `<span class="home-status-value">${escHtml(project)}</span>`),
         row(t('home_open_items'), report
             ? `<button type="button" class="card-link home-status-value" onclick="switchView('board')">${open}</button>`
                 + (blocked ? ` <span class="pill pill-blocked">${blocked} ${escHtml(t('overview_blocked_pill'))}</span>` : '')
@@ -51,7 +59,7 @@ export function statusHtml({ project, report, hooks, mcp, usage }) {
     ];
     const used = usageLine(usage);
     if (used) rows.push(row(t('home_usage').replace('{days}', usage.days || 7), used));
-    return `<dl class="home-status">${rows.join('')}</dl>`;
+    return `<dl class="home-status">${rows.join('')}</dl>${feedbackLine(feedbackPending)}`;
 }
 
 export async function fetchOverview() {
@@ -76,5 +84,5 @@ export async function fetchOverview() {
         return;
     }
     const project = report?.project || (ws?.activeWorkspace || '').split(/[\\/]/).pop() || '—';
-    status.innerHTML = statusHtml({ project, report: report && report.board ? report : null, hooks, mcp, usage });
+    status.innerHTML = statusHtml({ project, report: report && report.board ? report : null, hooks, mcp, usage, feedbackPending: ws?.feedbackPending });
 }

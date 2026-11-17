@@ -4,4 +4,6 @@
    were hidden here, and Home's "Connect an AI" then scrolled to nothing). */
 @media (max-width: 860px) {
     .system-bar .sys-item.dim, .system-bar #sys-activity { display: none !important; }
+    /* The word "project" before its name pushed the theme toggle off a 375 px bar (2026-11-15). */
+    .system-bar .sys-item > .dim[data-i18n="sys_project"] { display: none; }
 }

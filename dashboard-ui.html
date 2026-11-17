@@ -37,7 +37,7 @@
         </button>
         <span class="sys-mark">PLUT_OS</span>
         <!-- Must match package.json "version": tools/smoke-test.mjs asserts it. -->
-        <span class="sys-item dim">v0.5.4</span>
+        <span class="sys-item dim">v0.5.5</span>
         <span class="sys-spacer"></span>
         <span class="sys-item"><span class="dim" data-i18n="sys_project">project</span> <span id="sys-project">—</span></span>
         <!-- Whether an AI tool can reach this project, and one click to where it is fixed (ui/modules/activity.js). -->
@@ -91,7 +91,8 @@
             </div>
         </div>
 
-        <!-- Four pages: Home, Board, Projects, Settings (owner decision d-51e97352b22e). -->
+        <!-- Seven pages: Home, Board, Activity, Code map, Costs, Projects, Settings (owner decisions
+             d-51e97352b22e, 2026-11-15, and 2026-11-17: Code map and Costs back). -->
         <div class="nav-tabs">
             <button class="tab-btn active" onclick="switchView('overview', this)">
                 <i data-lucide="home"></i> <span data-i18n="tab_overview">Home</span>
@@ -99,6 +100,15 @@
             <button class="tab-btn" onclick="switchView('board', this)">
                 <i data-lucide="kanban"></i> <span data-i18n="tab_board">Board</span>
                 <span class="board-unread-dot" hidden></span>
+            </button>
+            <button class="tab-btn" onclick="switchView('activity', this)">
+                <i data-lucide="activity"></i> <span data-i18n="tab_activity">Activity</span>
+            </button>
+            <button class="tab-btn" onclick="switchView('codeindex', this)">
+                <i data-lucide="network"></i> <span data-i18n="tab_codeindex">Code map</span>
+            </button>
+            <button class="tab-btn" onclick="switchView('costs', this)">
+                <i data-lucide="wallet"></i> <span data-i18n="tab_costs">Costs</span>
             </button>
             <button class="tab-btn" onclick="switchView('hub-view', this)">
                 <i data-lucide="layout-grid"></i> <span data-i18n="tab_hub">Projects</span>
@@ -121,6 +131,107 @@
             <section id="home-waiting" class="home-waiting" aria-live="polite"><p class="home-waiting-none" data-i18n="loading">Loading…</p></section>
             <h3 class="section-title" data-i18n="home_status">Status</h3>
             <div id="home-status"></div>
+        </section>
+
+        <!-- ACTIVITY: usage over the last 7 days and the work done and not done (activity-page.js). -->
+        <section id="view-activity" class="view-section">
+            <!-- Layout: the owner's draft B (d-872338fa9556); activity-page.js renders the parts. -->
+            <header class="page-head act-page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title" data-i18n="title_activity">Activity</h2>
+                    <span id="activity-range" class="act-range"></span>
+                </div>
+                <div class="page-actions">
+                    <select id="activity-days" class="act-days" aria-label="Period" onchange="setActivityDays(this.value)">
+                        <option value="7" data-i18n="act_last_7">Last 7 days</option>
+                        <option value="30" data-i18n="act_last_30">Last 30 days</option>
+                    </select>
+                </div>
+            </header>
+            <div id="activity-empty"></div>
+            <section id="activity-usage-section" hidden>
+                <div id="activity-usage"></div>
+            </section>
+            <section id="activity-work-section" hidden>
+                <div id="activity-work"></div>
+            </section>
+        </section>
+
+        <!-- CODE MAP: the dependency graph first (graphify.js: Build the graph writes graphify-out/
+             into the project and the page in the frame draws it), then the folder map (codeindex.js,
+             read from the index shards). Restored on 2026-11-17 after the 2026-11-14 cut. -->
+        <section id="view-codeindex" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title" data-i18n="title_codeindex">Code map</h2>
+                </div>
+                <div class="page-actions">
+                    <button type="button" id="graphify-studio-build-btn" class="btn-primary" onclick="buildCurrentGraphifyStudioGraph()"><span data-i18n="btn_build_graphify">Build the graph</span></button>
+                </div>
+            </header>
+            <h3 class="section-title" data-i18n="title_graphify">Dependency graph</h3>
+            <p class="page-status map-intro" data-i18n="graphify_desc">Which source file depends on which, as a graph you can explore. Building it writes a map file into the project.</p>
+            <div class="field-row map-actions">
+                <a id="graphify-studio-fullscreen-btn" href="/api/graphify/html" target="_blank" rel="noopener" class="btn-secondary btn-sm"><span data-i18n="btn_fullscreen">Open in a new tab</span></a>
+                <button type="button" id="graphify-studio-clean-btn" class="btn-secondary btn-sm btn-danger" onclick="cleanCurrentGraphifyStudioGraph()"><span data-i18n="btn_clean_graphify">Delete graph</span></button>
+                <!-- The project's own setting (.plutos/plutos.config.json), which session_start reads. -->
+                <label id="graphify-auto-wrap" class="field-inline">
+                    <input type="checkbox" id="graphify-auto-toggle" onchange="setGraphifyAutoRefresh(this.checked)">
+                    <span data-i18n="graphify_auto_label">Keep current automatically</span>
+                </label>
+            </div>
+            <div id="graphify-studio-canvas-container" class="map-canvas map-canvas-graph">
+                <div class="map-state map-state-static"><p class="page-status" data-i18n="loading">Loading…</p></div>
+            </div>
+            <div id="graphify-studio-status-bar" class="map-status">
+                <div>
+                    <span id="graphify-studio-node-count">–</span>
+                    <span id="graphify-studio-edge-count">–</span>
+                </div>
+                <p id="graphify-studio-updated-at" class="page-status">–</p>
+            </div>
+
+            <h3 class="section-title" data-i18n="codemap_folders_title">Folders and files</h3>
+            <div class="field-row map-actions">
+                <button type="button" class="btn-secondary btn-sm" onclick="regenerateCodebaseIndex(this)"><span data-i18n="codeindex_scan_btn">Scan again</span></button>
+                <span id="codeindex-meta" class="page-status"></span>
+            </div>
+            <div id="codeindex-container" class="map-row">
+                <!-- The toolbar (search, limit, physics) and the legend are drawn by ui/modules/codeindex.js. -->
+                <div id="codeindex-graph" class="map-canvas">
+                    <div id="codeindex-toolbar"></div>
+                    <div id="codeindex-vis-canvas"></div>
+                    <div id="codeindex-legend"></div>
+                </div>
+                <div id="codeindex-sidebar" class="map-side">
+                    <div class="card">
+                        <div class="card-head"><h3 class="card-title" data-i18n="codeindex_systems">Folders</h3></div>
+                        <div id="codeindex-systems" class="map-list"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head"><h3 class="card-title" data-i18n="codeindex_details_title">Details</h3></div>
+                        <div id="graph-node-details" class="map-details"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- COSTS: the project's own token ledger (usage.js, read off this machine, no network), then
+             CodeBurn's machine-wide figures (codeburn.js), run only from its button. -->
+        <section id="view-costs" class="view-section">
+            <header class="page-head">
+                <div class="page-head-text">
+                    <h2 class="page-title" data-i18n="title_costs">Costs</h2>
+                </div>
+                <div class="page-actions">
+                    <button type="button" class="btn-secondary" onclick="refreshUsage()"><span data-i18n="btn_refresh">Refresh</span></button>
+                </div>
+            </header>
+            <h3 class="section-title" data-i18n="costs_ledger_title">This project's token ledger</h3>
+            <p class="page-status map-intro" data-i18n="usage_desc">Who spent what in this project, split by agent, model and session, read from this machine.</p>
+            <section id="usage-container" class="card"><p class="page-status" data-i18n="loading">Loading…</p></section>
+            <h3 class="section-title" data-i18n="costs_codeburn_title">CodeBurn, the whole computer</h3>
+            <section id="codeburn-container" class="card"><p class="page-status" data-i18n="loading">Loading…</p></section>
         </section>
 
         <section id="hub-view" class="view-section">
@@ -255,7 +366,8 @@
         </div>
     </div>
 
-    <!-- MOBILE BOTTOM NAVIGATION: Home, Board, and the menu for the rest. -->
+    <!-- MOBILE BOTTOM NAVIGATION: Home, Board, Activity, and the menu (the sidebar drawer) for the rest:
+         Code map, Costs, Projects, Settings. -->
     <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
         <button class="mob-tab-btn active" data-mob-view="overview" onclick="switchView('overview', this)">
             <i data-lucide="home"></i>
@@ -265,6 +377,10 @@
             <i data-lucide="kanban"></i>
             <span data-i18n="tab_board">Board</span>
             <span class="board-unread-dot" hidden></span>
+        </button>
+        <button class="mob-tab-btn" data-mob-view="activity" onclick="switchView('activity', this)">
+            <i data-lucide="activity"></i>
+            <span data-i18n="tab_activity">Activity</span>
         </button>
         <button class="mob-tab-btn" onclick="toggleSidebarMenu()">
             <i data-lucide="menu"></i>
