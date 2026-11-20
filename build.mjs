@@ -152,7 +152,7 @@ fs.writeFileSync(path.join(DIST, 'README.txt'), [
     'Without an AI: node cli.mjs report <project> writes a status report, node cli.mjs check <project>',
     'lists what its records name that the repository does not hold.',
     '',
-    'LICENSE: PLUT_OS is proprietary. THIRD_PARTY_NOTICES.txt: the licences of the software inside it.',
+    'LICENSE: PLUT_OS is licensed under Apache-2.0 (see LICENSE and NOTICE). THIRD_PARTY_NOTICES.txt: the licences of the software inside it.',
     '',
     'Optional browser client: open browser-client/index.html with the local app running.',
     'The same browser-client folder is an unpacked Chrome extension; installation is owner-controlled.',

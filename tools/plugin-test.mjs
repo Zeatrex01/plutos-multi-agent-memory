@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { clientProcessPresence } from '../lib/client-process.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-plugin-')));
@@ -59,6 +60,7 @@ function startServer(projectDir, extraEnv = {}) {
     Object.assign(env, extraEnv);
     const command = spec.command === 'node' ? process.execPath : spec.command;
     const srv = spawn(command, spec.args.map(fill), { cwd: scratch, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const closed = new Promise(resolve => srv.once('close', resolve));
     let buf = '', nextId = 1;
     const pending = new Map();
     srv.stdout.on('data', d => {
@@ -89,7 +91,7 @@ function startServer(projectDir, extraEnv = {}) {
         const r = await rpc('tools/call', { name, arguments: args });
         return { text: (r.result?.content || []).map(c => c.text || '').join(''), isError: !!r.result?.isError };
     };
-    return { srv, rpc, open, call, close: () => srv.kill() };
+    return { srv, rpc, open, call, close: async () => { srv.kill(); await closed; } };
 }
 
 const kit = path.join(scratch, 'kit');
@@ -245,7 +247,7 @@ try {
                 assert.equal(info.plugin, 'active');
                 const board = await s.call('board_read');
                 assert.equal(board.isError, false, board.text);
-            } finally { s.close(); }
+            } finally { await s.close(); }
         }
     });
     await checkAsync('a client root in a subfolder is the plugin\'s project only while no nearer project sits between them', async () => {
@@ -258,7 +260,7 @@ try {
             const info = JSON.parse((await s.call('plutos_project_info')).text);
             assert.equal(info.projectRoot, kit);
             assert.equal(info.safe, false, 'a root inside another project is that project\'s, not this one\'s');
-        } finally { s.close(); fs.rmSync(inner, { recursive: true, force: true }); }
+        } finally { await s.close(); fs.rmSync(inner, { recursive: true, force: true }); }
     });
     await checkAsync('outside a PLUT_OS project: one diagnostic tool and no instructions, cheap, writes nothing and makes no data folder', async () => {
         const before = listTree(plain);
@@ -281,10 +283,15 @@ try {
             assert.equal(info.plugin, 'outside');
             assert.match(info.error, /not a PLUT_OS project/);
             // No PLUT_OS server or SDK loaded: well under what index.mjs takes (about 80 MB, 150 ms here).
-            const rss = Number(fs.readFileSync(`/proc/${s.srv.pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/)?.[1] || 0) / 1024;
-            if (process.platform === 'linux') assert.ok(rss < 65, `RSS ${Math.round(rss)} MB`);
-            console.log(`        (outside: initialize answered in ${Math.round(ms)} ms, RSS ${Math.round(rss)} MB)`);
-        } finally { s.close(); }
+            assert.equal(clientProcessPresence(s.srv.pid), 'present', 'the outside server stays alive');
+            let resource = 'process alive';
+            if (process.platform === 'linux') {
+                const rss = Number(fs.readFileSync(`/proc/${s.srv.pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/)?.[1] || 0) / 1024;
+                assert.ok(rss < 65, `RSS ${Math.round(rss)} MB`);
+                resource = `RSS ${Math.round(rss)} MB`;
+            }
+            console.log(`        (outside: initialize answered in ${Math.round(ms)} ms, ${resource})`);
+        } finally { await s.close(); }
         assert.deepEqual(listTree(plain), before);
         assert.ok(!fs.existsSync(freshHub), 'no data folder for a folder it does not serve');
     });
@@ -299,7 +306,7 @@ try {
             const init = await s.open();
             const tools = (await s.rpc('tools/list', {})).result.tools;
             return { init: init.result, tools };
-        } finally { s.close(); }
+        } finally { await s.close(); }
     };
     await checkAsync('beside a .mcp.json plutos entry: pending, declined or unresolvable keeps the plugin active; approved makes it stand by', async () => {
         wireClient('claude-code', wired);
@@ -329,7 +336,7 @@ try {
             const call = await s.call('board_read');
             assert.equal(call.isError, true);
             assert.match(call.text, /stands by/);
-        } finally { s.close(); }
+        } finally { await s.close(); }
         setClaudeJson({ projects: { [wired]: { enableAllProjectMcpServers: true } } });
         assert.equal(pluginServerMode(wired), 'standby', 'enableAllProjectMcpServers approves it too');
         setClaudeJson({});
@@ -431,6 +438,6 @@ try {
     console.error(`FAIL: ${e.stack || e.message}`);
     process.exitCode = 1;
 } finally {
-    fs.rmSync(scratch, { recursive: true, force: true });
+    fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 if (!process.exitCode) console.log(`plugin-test: ${checks} checks passed`);

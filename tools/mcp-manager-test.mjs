@@ -19,7 +19,7 @@ process.env.HOME = HOME; delete process.env.USERPROFILE; delete process.env.APPD
 process.env.PLUTOS_HOME = path.join(scratch, 'hub');
 const { listMcps, detectTier, RECOMMENDED_MCPS } = await import('../lib/mcps.mjs');
 const { listClientMcps, wireClient } = await import('../lib/connect.mjs');
-const { codeLookup, usageSummary, CODE_TOOLS } = await import('../lib/code-tools.mjs');
+const { codeLookup, formatCodeLookup, usageSummary, CODE_TOOLS } = await import('../lib/code-tools.mjs');
 const { DRAWERS, isDrawerOpen } = await import('../lib/drawers.mjs');
 const { encodeProjectDir } = await import('../lib/usage.mjs');
 
@@ -112,9 +112,13 @@ try {
 
     // The code tools (plutos_code_lookup listed by default; plutos_usage in the admin drawer).
     const CODE = path.join(scratch, 'code');
+    write(path.join(CODE, 'tsconfig.json'), '{ // comment\n "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["./*"] } }, }');
     write(path.join(CODE, 'lib', 'store.mjs'), "export function saveThing() {}\n");
     write(path.join(CODE, 'lib', 'store-extra.mjs'), "export const extra = 1;\n");
     write(path.join(CODE, 'app.mjs'), "import { saveThing } from './lib/store.mjs';\nexport function main() { saveThing(); }\n");
+    write(path.join(CODE, 'alias-app.mjs'), "import { extra } from '@/lib/store-extra.mjs';\nexport const value = extra;\n");
+    write(path.join(CODE, 'lib/server/orderPricing.ts'), 'export function priceCartServerSide() {}\n');
+    write(path.join(CODE, 'app/api/orders/route.ts'), "import { priceCartServerSide } from '@/lib/server/orderPricing';\n");
     check('code lookup finds a declared symbol, what its file uses and what uses it', () => {
         const r = codeLookup(CODE, 'savething');
         assert.equal(r.matches[0].file, 'lib/store.mjs');
@@ -122,6 +126,23 @@ try {
         assert.deepEqual(codeLookup(CODE, 'main').matches[0].uses, ['lib/store.mjs']);
     });
     check('a path query puts the file itself first', () => assert.equal(codeLookup(CODE, 'lib/store').matches[0].file, 'lib/store.mjs'));
+    check('code lookup follows configured alias imports', () => {
+        const result = codeLookup(CODE, 'lib/store-extra.mjs');
+        assert.deepEqual(result.matches[0].usedBy, ['alias-app.mjs']);
+        const text = formatCodeLookup('lib/store-extra.mjs', result);
+        assert.match(text, /used by: alias-app\.mjs/);
+    });
+    check('code lookup finds the Next.js pricing symbol and its alias importer', () => {
+        const result = codeLookup(CODE, 'priceCartServerSide');
+        assert.equal(result.matches[0].file, 'lib/server/orderPricing.ts');
+        assert.deepEqual(result.matches[0].usedBy, ['app/api/orders/route.ts']);
+    });
+    check('empty resolved importers avoid unsupported claims about aliases or unused files', () => {
+        const text = formatCodeLookup('app.mjs', codeLookup(CODE, 'app.mjs'));
+        assert.doesNotMatch(text, /nothing in this project/);
+        assert.match(text, /used by: no resolved importers/);
+        assert.doesNotMatch(text, /alias and package imports are not followed/);
+    });
     check('usage counts this project\'s transcripts only', () => {
         const usageLine = tokens => JSON.stringify({ type: 'assistant', message: { model: 'm', usage: { input_tokens: 1, output_tokens: tokens } } });
         write(path.join(HOME, '.claude', 'projects', encodeProjectDir(PROJECT), 's1.jsonl'), usageLine(1200) + '\n');
@@ -129,12 +150,12 @@ try {
         const text = usageSummary(PROJECT);
         assert.match(text, /1K output\+thinking/);
         assert.doesNotMatch(text, /900K/);
-        assert.match(usageSummary(path.join(scratch, 'nowhere')), /No Claude Code session for this project/);
+        assert.match(usageSummary(path.join(scratch, 'nowhere')), /No Claude Code or Codex session for this project/);
     });
     check('plutos_usage sits in the closed admin drawer', () => {
         const drawer = DRAWERS.find(d => d.id === 'admin');
         assert.ok(drawer.tools.some(t => t.name === 'plutos_usage'));
-        assert.match(CODE_TOOLS.find(t => t.name === 'plutos_usage').description, /Claude Code only/);
+        assert.match(CODE_TOOLS.find(t => t.name === 'plutos_usage').description, /Claude Code and Codex/);
         assert.equal(isDrawerOpen(PROJECT, 'admin'), false);
     });
     console.log(`${checks} MCP manager checks passed.`);

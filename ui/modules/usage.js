@@ -1,10 +1,7 @@
 // Local token ledger: the first half of the Costs page, the half that answers "who spent what".
 //
-// CodeBurn sits below it rather than replacing it because they answer different questions.
-// CodeBurn gives a machine-wide, currency-denominated lifetime rollup from `npx --no codeburn` (when installed);
-// this reads the Claude CLI's own per-session transcripts off disk and splits the result by
-// project, by model and by session. No network, so this half still renders when the other one
-// is on standby.
+// This reads the Claude CLI's and Codex's own per-session records off disk and splits the result by
+// tool, agent, model and session. No network.
 //
 // Every table ranks by WORK — output plus thinking. Cache reads are 300x larger than output
 // in a real session, so ranking by a combined total would rank by cache reuse rather than by
@@ -21,6 +18,8 @@ import { emptyState } from './page.js';
 
 const n = (v) => Number(v || 0).toLocaleString();
 const work = (r) => (r.output || 0) + (r.thinking || 0);
+// Product names, not translatable strings.
+const TOOL_NAMES = { 'claude-code': 'Claude Code', codex: 'Codex' };
 
 // A project directory name is the project path with every separator flattened to a dash, and
 // that is not reversible. Showing the tail is honest and is what tells two projects apart.
@@ -57,7 +56,7 @@ function table(titleKey, rows, label) {
     </div>`;
 }
 
-// The ledger reads the open project's Claude transcripts (lib/usage.mjs; a long project can hold
+// The ledger reads the open project's Claude and Codex records (lib/usage.mjs; a long project can hold
 // hundreds of MB, held for 30 s afterwards) and the server answers nothing else while it does. The page says
 // what it is reading while it waits, gives up after USAGE_TIMEOUT_MS, and offers Try again.
 const USAGE_TIMEOUT_MS = 30000;
@@ -106,9 +105,10 @@ export async function fetchUsage(force = false) {
                 <div class="usage-head"><b>${n(tot.calls)}</b><span>${t('usage_col_calls')}</span></div>
                 <div class="usage-head dim"><b>${n(tot.cacheRead)}</b><span>${t('usage_col_cache_r')}</span></div>
             </div>
-            <p class="usage-note">${t('usage_scanned').replace('{files}', n(d.scannedFiles)).replace('{mb}', mb)}${
+            <p class="usage-note">${t('usage_scanned').replace('{files}', n(d.scannedFiles)).replace('{mb}', mb)} ${t('usage_window').replace('{days}', n(d.sinceDays || 90))}${
                 d.truncated ? ` <b class="usage-warn">${t('usage_truncated').replace('{n}', n(d.skippedFiles))}</b>` : ''
             }</p>
+            ${d.clients && d.clients.length > 1 ? table('usage_by_tool', d.clients, r => TOOL_NAMES[r.name] || r.name) : ''}
             ${table('usage_by_agent', d.agents, r => r.main
                 ? t('usage_main_thread')
                 : (r.label || r.id).slice(0, 64))}

@@ -198,9 +198,10 @@ check('the Connect steps are not hidden in the narrow layout',
     // The public copy ships without CHANGELOG.md; there the check has nothing to read.
     const changelogUrl = new URL('../CHANGELOG.md', import.meta.url);
     const changelog = fs.existsSync(changelogUrl) ? fs.readFileSync(changelogUrl, 'utf8') : '## [Unreleased]\n- Activity: (no changelog in this copy)\n';
-    // The newest section with entries: Unreleased, or the release just cut from it.
+    // The section that records the move (the newest one with an Activity line): later sections with
+    // unrelated entries must not fail this check.
     const sections = changelog.split(/\n(?=## \[)/).filter(x => x.startsWith('## ['));
-    const unreleased = sections.find(x => /^- /m.test(x)) || '';
+    const unreleased = sections.find(x => /^- Activity/m.test(x)) || '';
     check('the unreleased changelog places Usage and Work on Activity, not Home', !/^- Home(:| Work)/m.test(unreleased) && /^- Activity/m.test(unreleased));
 }
 

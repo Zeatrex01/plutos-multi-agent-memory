@@ -76,6 +76,18 @@ async function post(p, body) {
     });
     return res.json();
 }
+// Answering an approval ticket needs the token the dashboard page carries (a meta tag in the served HTML).
+let approvalTokenCache = '';
+async function approvalToken() {
+    if (!approvalTokenCache) approvalTokenCache = (await (await request(BASE + '/')).text()).match(/name="plutos-approval-token" content="([0-9a-f]+)"/)?.[1] || '';
+    return approvalTokenCache;
+}
+async function answerTicket(body, token) {
+    const res = await request(BASE + '/api/approvals', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token === null ? {} : { 'X-Plutos-Approval': token ?? await approvalToken() }) },
+        body: JSON.stringify(body) });
+    return Object.assign(await res.json(), { httpStatus: res.status });
+}
 // A request through a local proxy or tunnel carries a forwarding header and is remote: the
 // dashboard answers the owner at this computer only, so it is refused outright.
 const PROXIED_IP = { 'X-Forwarded-For': '203.0.113.9' };
@@ -156,8 +168,6 @@ try {
     check('kit install copies AGENTS.md and shared board', fs.existsSync(path.join(projectDir, 'AGENTS.md'))
         && fs.existsSync(path.join(projectDir, 'docs', 'handoff', 'BOARD.md')));
     check('kit install generates the in-project code index', fs.existsSync(path.join(projectDir, 'docs', 'ai', 'CODEINDEX.md')));
-    const spendRead = await get('/api/spend');
-    check('opening the Costs page never starts CodeBurn (GET /api/spend is read only)', spendRead && spendRead.pending === false);
     const tokenUsage = await get('/api/token-usage');
     check('the token ledger lives at /api/token-usage and is not the Activity usage log',
         tokenUsage && typeof tokenUsage === 'object' && !('records' in tokenUsage && 'skipped' in tokenUsage), JSON.stringify(tokenUsage).slice(0, 200));
@@ -817,6 +827,8 @@ try {
             check('a second read within the window is the cached one', usage.readTokenUsage('/a/mine', { onlyProject: true }) === p1);
             check('force reads again', usage.readTokenUsage('/a/mine', { force: true, onlyProject: true }) !== p1);
             check('the whole-machine reading is held apart from the project one', usage.readTokenUsage('/a/mine', { onlyProject: false }) !== p1);
+            check('with no Codex sessions the ledger has one tool, Claude Code',
+                p1.clients.length === 1 && p1.clients[0].name === 'claude-code' && p1.models.every(m => m.client === 'claude-code'), JSON.stringify(p1.clients));
         } finally {
             if (realHome === undefined) delete process.env.HOME; else process.env.HOME = realHome;
             if (realProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = realProfile;
@@ -1508,6 +1520,28 @@ try {
     const readd = await post('/api/workspaces/add', { path: gitDir });
     check('re-add does not duplicate the ignore block',
         gitIgnoreText().split('.plutos/local.json').length - 1 === 1, gitIgnoreText());
+
+    // C7: growing the ignore list extends the existing block without another header.
+    const { MACHINE_IGNORES, describeIgnores } = await import('../lib/workspaces.mjs');
+    const ignoreHeader = '# PLUT_OS — machine-specific, never commit';
+    const missingIgnore = MACHINE_IGNORES.at(-1);
+    for (const eol of ['\n', '\r\n']) {
+        const existingIgnores = ['# User rules', 'build/', '', ignoreHeader,
+            ...MACHINE_IGNORES.filter(entry => entry !== missingIgnore), '', '# Other rules', 'cache/', ''].join(eol);
+        fs.writeFileSync(path.join(gitDir, '.gitignore'), existingIgnores);
+        const extended = initTargetProject(gitDir, { skipGeneratedMaps: true });
+        const extendedText = gitIgnoreText();
+        check(`an existing ignore block gains only the missing line (${JSON.stringify(eol)})`,
+            extended.ignores?.state === 'added' && extended.ignores.entries.length === 1
+            && extended.ignores.entries[0] === missingIgnore
+            && extendedText === existingIgnores.replace(ignoreHeader + eol, ignoreHeader + eol + missingIgnore + eol)
+            && extendedText.split(ignoreHeader).length - 1 === 1, extendedText);
+        const repeated = initTargetProject(gitDir, { skipGeneratedMaps: true });
+        check(`extending the ignore block is idempotent (${JSON.stringify(eol)})`,
+            repeated.ignores?.state === 'already' && gitIgnoreText() === extendedText);
+    }
+    check('the ignore notice explains how to untrack generated paths once',
+        /git rm --cached <path>/.test(describeIgnores(gitKit.ignores)));
 
     // A plain folder: no .gitignore written, but the owner is told what to add if they ever
     // run `git init` there. Silent would mean their first push leaks a machine path.
@@ -3294,8 +3328,8 @@ for (let i = 0; i < n; i++) {
         check('the Code map page has the Build the graph button',
             /<section id="view-codeindex"[\s\S]*id="graphify-studio-build-btn"[^>]*onclick="buildCurrentGraphifyStudioGraph\(\)"/.test(html)
             && fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'graphify.js'), 'utf8').includes('/api/graphify/scan'));
-        check('the Costs page has the ledger and the CodeBurn card, and its ledger does not read the usage log',
-            html.includes('id="usage-container"') && html.includes('id="codeburn-container"')
+        check('the Costs page has the ledger only (CodeBurn is gone), and its ledger does not read the usage log',
+            html.includes('id="usage-container"') && !/codeburn/i.test(html)
             && fs.readFileSync(path.join(__dirname, 'ui', 'modules', 'usage.js'), 'utf8').includes('/api/token-usage'));
         check('vis-network is not loaded with the dashboard, only by the map that draws with it', !/vis-network/.test(html));
         check('the phone bar has Home, Board and Activity',
@@ -3584,7 +3618,12 @@ for (let i = 0; i < n; i++) {
         check('dashboard lists the pending question',
             (listed.pending || []).some(q => q.id === asked.id && q.agent === 'Antigravity'), JSON.stringify(listed).slice(0, 200));
 
-        const ok = await post('/api/approvals', { id: asked.id, decision: 'approved', note: 'go, but back it up' });
+        const noToken = await answerTicket({ id: asked.id, decision: 'approved' }, null);
+        const badToken = await answerTicket({ id: asked.id, decision: 'approved' }, 'f'.repeat(48));
+        check('answering without the page token, or with a wrong one, is refused (403) and the ticket stays pending',
+            noToken.httpStatus === 403 && badToken.httpStatus === 403 && readApproval(projectDir, asked.id).status === 'pending',
+            `${noToken.httpStatus} ${badToken.httpStatus}`);
+        const ok = await answerTicket({ id: asked.id, decision: 'approved', note: 'go, but back it up' });
         check('owner approves through the dashboard', ok.success === true && ok.status === 'approved', ok.message);
         const answered = readApproval(projectDir, asked.id);
         check('answer reaches the agent with the note',
@@ -3593,7 +3632,7 @@ for (let i = 0; i < n; i++) {
             !(await get('/api/approvals')).pending.some(q => q.id === asked.id));
 
         // Two clicks on the same card — the second must lose, not overwrite the first answer.
-        const again = await post('/api/approvals', { id: asked.id, decision: 'rejected' });
+        const again = await answerTicket({ id: asked.id, decision: 'rejected' });
         check('a second answer is refused, not silently applied',
             again.success === false && /already approved/i.test(again.message || ''), again.message);
         check('first answer survived the second click', readApproval(projectDir, asked.id).status === 'approved');
@@ -3627,7 +3666,7 @@ for (let i = 0; i < n; i++) {
         check('at the computer the T2 ticket is approvable and the answer is recorded as local',
             listedLocal.via === 'local' && listedLocal.pending.find(q => q.id === install.id)?.approvableHere === true, JSON.stringify(listedLocal).slice(0, 200));
         const settled = legacyTicket();
-        const settledLocal = await post('/api/approvals', { id: settled.id, decision: 'approved' });
+        const settledLocal = await answerTicket({ id: settled.id, decision: 'approved' });
         check('a ticket from before the cut is approved at the computer without error and applies nothing',
             settledLocal.success === true && settledLocal.status === 'approved' && readApproval(projectDir, settled.id).status === 'approved'
             && !readApproval(projectDir, settled.id).actionResult, JSON.stringify(settledLocal));

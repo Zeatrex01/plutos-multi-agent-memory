@@ -41,6 +41,10 @@ try {
     check('portable build ships clean scaffold, not live handoff state',
         SHIPPED_DIRS.includes('scaffold') && buildSource.includes('for (const dir of SHIPPED_DIRS)')
         && ![...SHIPPED_DIRS, ...SHIPPED_FILES].some(item => item.startsWith('docs')));
+    check('the shipped README.txt does not call the Apache-2.0 project proprietary',
+        !/proprietary/i.test(buildSource) && /Apache-2\.0/.test(buildSource));
+    check('the portable build ships NOTICE beside LICENSE (Apache-2.0 section 4(d)) and its README names both',
+        SHIPPED_FILES.includes('NOTICE') && SHIPPED_FILES.includes('LICENSE') && /LICENSE and NOTICE/.test(buildSource));
     check('Windows builds brand before injection and verify the finished executable',
         buildSource.indexOf('brandWindowsExecutable(') < buildSource.indexOf("'NODE_SEA_BLOB'")
         && buildSource.indexOf('assertWindowsBrand(exePath)') > buildSource.indexOf("'NODE_SEA_BLOB'"));

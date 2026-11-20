@@ -9,7 +9,7 @@ import path from 'path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-coordination-home-'));
 process.env.PLUTOS_HOME = home;
 const project = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-coordination-project-'));
-const { sameAi: aiMatches } = await import('../lib/board.mjs');
+const { sameAi: aiMatches, applyBoardUpdate, parseBoardEntries } = await import('../lib/board.mjs');
 const { createApproval, answerApproval, runApprovedAction, readApproval, approvalsDir, askSeal } = await import('../lib/approvals.mjs');
 const { updateState, readState, LOG_KEEP } = await import('../lib/state.mjs');
 const { boundedBrief, buildBrief, recordSession, CONTINUITY_LIMITS } = await import('../lib/continuity.mjs');
@@ -25,6 +25,25 @@ try {
     check('a short name matches a name it is the first word of ("claude" ~ "Claude Code")', aiMatches('Claude Code', 'claude') && aiMatches('claude', 'Claude Code'));
     check('a shorter name never claims a hyphenated sibling ("codex" is not "codex-reviewer")', !aiMatches('codex', 'codex-reviewer') && !aiMatches('codex-reviewer', 'codex'));
     check('a substring inside a word is not a match ("ode" is not "codex")', !aiMatches('codex', 'ode') && !aiMatches('Antigravity', 'gravity'));
+    check('surrounding brackets, parentheses and punctuation do not change an identity',
+        aiMatches(' [CLAUDE] ', 'Claude') && aiMatches('Claude', '([CLAUDE]).') && aiMatches('(Claude Code)', '[Claude]'));
+    check('punctuation-only names never match', !aiMatches('[]', '()') && !aiMatches('', '[Claude]'));
+    check('internal punctuation still distinguishes agents',
+        !aiMatches('[codex-reviewer]', '(codex)') && !aiMatches('[Claude-Code]', 'Claude Code'));
+
+    // C6: a decorated agent name must update the same task instead of duplicating it.
+    const original = applyBoardUpdate('', { agent: '[CLAUDE]', status: 'TODO', title: 'Shared title' });
+    const updated = applyBoardUpdate(original.content, { agent: 'Claude', status: 'IN_PROGRESS', title: 'Shared title', task: 'Updated task' });
+    const entries = parseBoardEntries(updated.content);
+    check('a bracketed agent followed by its plain name updates one row', updated.action === 'updated'
+        && entries.length === 1 && entries[0].status === 'IN_PROGRESS' && entries[0].fields.Task === 'Updated task');
+    const qualified = applyBoardUpdate(updated.content, { agent: 'Claude Code', status: 'IN_PROGRESS', title: 'Shared title' });
+    check('a qualified name still updates the short-name row', qualified.action === 'updated' && parseBoardEntries(qualified.content).length === 1);
+    const different = applyBoardUpdate(updated.content, { agent: 'Codex', status: 'TODO', title: 'Shared title' });
+    check('different agents with the same title still get two rows', different.action === 'created'
+        && parseBoardEntries(different.content).length === 2);
+    const sibling = applyBoardUpdate(different.content, { agent: '[codex-reviewer]', status: 'TODO', title: 'Shared title' });
+    check('a hyphenated sibling still gets its own row', sibling.action === 'created' && parseBoardEntries(sibling.content).length === 3);
 
     // --- the brief's board part follows the same identity rule ---
     writeBoardEntry(project, { agent: 'Claude', status: 'TODO', title: 'Own backlog item', task: 'BACKLOG-DETAIL' });

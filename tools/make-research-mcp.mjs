@@ -63,6 +63,7 @@ for (const f of ['store.mjs', 'quote.mjs', 'fetch.mjs', 'mcp.mjs', 'routes.mjs',
 copy('lib/atomic.mjs');
 copy('lib/client-process.mjs');
 copy('LICENSE');
+copy('NOTICE');
 
 // fetch.mjs finds the bridge from APP_ROOT; here the app root is the package folder.
 fs.writeFileSync(path.join(OUT, 'lib', 'approot.mjs'), `import path from 'path';

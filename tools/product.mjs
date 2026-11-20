@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 // Copied beside the executable. A file git ignores never ships. A new file not yet added to git
 // ships, so a build before a commit still works.
 export const SHIPPED_DIRS = ['ui', 'browser-client', 'scaffold', 'lib', 'packs'];
-export const SHIPPED_FILES = ['LICENSE', 'AGENTS.md', 'package.json', 'cli.mjs', 'dashboard-ui.html', 'council.config.json', 'tools/council.mjs'];
+export const SHIPPED_FILES = ['LICENSE', 'NOTICE', 'AGENTS.md', 'package.json', 'cli.mjs', 'dashboard-ui.html', 'council.config.json', 'tools/council.mjs'];
 
 /** The files under `dir` that git tracks or does not ignore and that exist, relative to `dir`. */
 export function releaseFiles(dir) {
@@ -79,7 +79,7 @@ export function bundledPackages(root, metafiles) {
 export function noticesText(packages, { nodeVersion = process.version, nodeLicense = findNodeLicense() } = {}) {
     const rule = '-'.repeat(72);
     return [
-        'PLUT_OS is proprietary (LICENSE). It contains the third-party software below, each under its own licence.',
+        'PLUT_OS is licensed under Apache-2.0 (LICENSE). It contains the third-party software below, each under its own licence.',
         '', rule, '',
         `Node.js ${nodeVersion}: the executable is a copy of the Node.js binary.`, '',
         nodeLicense ?? `Its licence: https://github.com/nodejs/node/blob/${nodeVersion}/LICENSE`,

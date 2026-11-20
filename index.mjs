@@ -130,13 +130,14 @@ const TOOLS = [
   },
   {
     name: "plutos_context_for_task",
-    description: "PLUT_OS: Before you start a task, ask which files it touches. Give the task in one or two sentences (any language; naming a file or a function helps) and get a short ranked list of files to open first, each with the reason it is there (named in the task, declares a symbol you mentioned, matches the task's words, or uses / is used by one of those) and how confident the answer is. Ranks code files and memory records; writes only a git-ignored cache. Start from this list and search only for what it leaves open.",
+    description: "PLUT_OS: Before you start a task, ask which files it touches. Give the task in one or two sentences (any language; naming a file or a function helps) and get a short ranked list of files to open first, each with the reason it is there (named in the task, declares a symbol you mentioned, matches the task's words, or uses / is used by one of those) and how confident the answer is. Ranks code files and memory records; writes only a git-ignored cache. readOnly: no board_update line.",
     inputSchema: {
       type: "object",
       properties: {
         task: { type: "string", description: "The task, as you would explain it to a colleague." },
         max_files: { type: "number", description: "How many files to list (default 12, max 40)." },
-        budget_tokens: { type: "number", description: "Rough size limit for the answer (default 1500, 200-8000)." }
+        budget_tokens: { type: "number", description: "Rough size limit for the answer (default 1500, 200-8000)." },
+        readOnly: { type: "boolean" }
       },
       required: ["task"]
     }
@@ -282,12 +283,12 @@ const TOOLS = [
   },
   {
     name: "plutos_decide",
-    description: "PLUT_OS: Record a decision the moment the owner states it; session_end may never run. Only what the owner said; your own choices go in session_end decided.",
+    description: "PLUT_OS: Record a decision when the owner states it; session_end may never run. Only what the owner said; your own choices go in session_end decided.",
     inputSchema: {
       type: "object",
       properties: {
-        decision: { type: "string", description: "The owner's words and the reason." },
-        supersedes: { type: "string", description: "Id (d-…) of the decision he changed." }
+        decision: { type: "string", description: "The owner's words and the reason; max 500 chars." },
+        supersedes: { type: "string", description: "Id (d-…) it replaces." }
       },
       required: ["decision"]
     }
@@ -451,7 +452,7 @@ const HANDLERS = {
   plutos_context_for_task(args) {
     if (typeof args?.task !== 'string' || !args.task.trim()) return errorText('ERROR: task is required: describe the work in a sentence.');
     try {
-      return text(noteShown(taskContext(PROJECT_ROOT, args.task, { maxFiles: args.max_files, budgetTokens: args.budget_tokens }).text));
+      return text(noteShown(taskContext(PROJECT_ROOT, args.task, { maxFiles: args.max_files, budgetTokens: args.budget_tokens, readOnly: args.readOnly === true }).text));
     } catch (e) {
       return errorText(`ERROR: ${e.message}`);
     }
@@ -754,7 +755,7 @@ const server = new Server(
     // A task-to-tool map, not a name list (feedback 2026-11-14 item 1): a session picks a tool by
     // its task. The first 512 characters cover the core tasks and the agents rule (checked in
     // tools/mcp-test.mjs): a client that defers tools decides from them when to search. plutos_code_lookup is file-level, so no line promises callers.
-    instructions: `PLUT_OS coordinates the AIs on this project. Task → tool: a session: session_start, session_end; which files a task touches: plutos_context_for_task (agents only for judgment, not look-ups); where a file or symbol is declared, what imports a file (file-level): plutos_code_lookup; sourced web research: research drawer (plutos_modules open research); owner decision: plutos_ask, record one: plutos_decide; tasks: board_read, board_update; a new agent: plutos_create_agent; status report, handover, token use: admin drawer; PLUT_OS lacked something or forced a workaround: plutos_feedback. SAFETY: This PLUT_OS coordinator is bound to ${PROJECT_ROOT}. Use project tools only when that exact repository is the user's active workspace. If another project is active, do not call its read or write tools; reconnect through that project's launcher or project-local MCP config. Call plutos_project_info to diagnose the binding; its fix field has the exact command.`
+    instructions: `PLUT_OS coordinates the AIs on this project. Task → tool: a session: session_start first, then follow the rules it returns, session_end; which files a task touches: plutos_context_for_task (agents only for judgment, not look-ups); where a file or symbol is declared, what imports a file (file-level): plutos_code_lookup; sourced web research: research drawer (plutos_modules open research); owner decision: plutos_ask, record one: plutos_decide; tasks: board_read, board_update; a new agent: plutos_create_agent; status report, handover, token use: admin drawer; PLUT_OS lacked something or forced a workaround: plutos_feedback. SAFETY: Bound to ${PROJECT_ROOT}: use project tools only when that exact repository is the user's active workspace. If another project is active, do not call its tools; reconnect through that project's launcher or project-local MCP config. Call plutos_project_info to diagnose the binding; its fix field has the exact command.`
   }
 );
 

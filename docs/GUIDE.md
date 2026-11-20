@@ -33,8 +33,7 @@ also links the files the engine links: in Godot, scripts and `.tscn`/`.tres` sce
 (preload, extends, class, scene); in Unity, scenes, prefabs and materials to the scripts and assets their
 `guid:` lines name (uses); an Unreal project is recognised only, since its assets are binary. A click on a
 script lists its functions and who calls each when the engine pack's code tools have built `.codegraph/`
-(today Godot's `.gd`)), **Costs** (this project's token ledger and CodeBurn's
-machine-wide figures), **Projects** (add a
+(today Godot's `.gd`)), **Costs** (this project's token ledger for Claude Code and Codex), **Projects** (add a
 project, install the kit, connect an AI, repair links) and **Settings** (language, light/dark,
 updates, where the data lives). The address keeps the page (`#board`), so a reload stays on it and
 Back returns to the last one.
@@ -463,7 +462,7 @@ Antigravity) are machine-specific even though they live under the project folder
 ### Third-party MCPs remain requests
 
 PLUT_OS's own Coordinator already supplies the shared session/context layer and generated
-Code map. Codebase Memory, Context Mode and CodeBurn remain optional extensions, listed on the
+Code map. Codebase Memory and Context Mode remain optional extensions, listed on the
 Projects page's Connect panel under "Extra tools your AI can set up"; they become idempotent board
 tasks only after the owner explicitly requests one, telling the AI to ask for global vs project
 scope. Nothing third-party is installed silently.
@@ -1086,12 +1085,13 @@ restart or reload Claude Code after either change.
 
 ### AI costs — what this project's AI work used
 
-`plutos_usage` gives your AI the open project's own ledger: Claude Code's records for this folder,
-read on this computer, split by agent, model and session (work is output plus thinking; cache reads
+`plutos_usage` gives your AI the open project's own ledger: the records Claude Code and Codex keep for this folder,
+read on this computer, split by tool, agent, model and session (work is output plus thinking; cache reads
 are shown apart). Nothing is installed or downloaded and nothing leaves the machine. The dashboard's
-**Costs** page shows the same ledger (`GET /api/token-usage`), and below it CodeBurn's figures for
-the whole computer, by range and day: they come from `npx --no codeburn` only when you press its
-button, so a computer without CodeBurn shows standby and nothing is downloaded.
+**Costs** page shows the same ledger (`GET /api/token-usage`; `?days=N` sets the window for both tools, 90 days by default: Claude Code transcripts by file date, Codex files by date folder; the page shows the window).
+Codex sessions are read from `~/.codex/sessions` and attributed to the project by their working folder;
+a tool's reasoning tokens are counted once, as thinking. Antigravity keeps no per-session token record on
+disk, so it is not counted.
 
 ### Usage log — which AIs used which tools
 

@@ -102,7 +102,8 @@ window.answerAsk = async function(id, decision, option, expectedProject) {
     try {
         const res = await fetch('/api/approvals', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json',
+                'X-Plutos-Approval': document.querySelector('meta[name="plutos-approval-token"]')?.content || '' },
             body: JSON.stringify({ projectRoot, id, decision, note, option })
         });
         const data = await res.json();

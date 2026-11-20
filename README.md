@@ -79,10 +79,10 @@ When several AIs work on one codebase, the same things go wrong every day:
 | AIs clashing on the same work | A shared `BOARD.md` with atomic, race-tested writes (two MCP servers writing at once, zero lost updates; the roster's lock holds 16 concurrent writers × 25 entries) and per-entry revision checks |
 | Decisions that get lost or quietly reversed | Every decision is a record with its own id; reversing one names the one it replaces, so the chain stays visible (`plutos memory list`, `open`, `supersede`). `plutos memory find` searches decisions, checked facts and past sessions in English and Turkish, and refuses a question nothing in the record answers |
 | An AI saying "done" with no test run | The claim check sends a "done" back when the tests did not run or a test was edited in the same fix; `plutos check` fails on records that cite missing files and on a tool, route or approval-rule change that no reviewer looked at |
-| Approval prompts scattered across tools | `plutos_ask`: one approval queue in the dashboard. Tickets are sealed so an agent cannot approve itself by editing a file, and `plutos approve` needs an interactive terminal, so an agent with a shell cannot run it either |
+| Approval prompts scattered across tools | `plutos_ask`: one approval queue in the dashboard. Tickets are sealed so an agent cannot approve itself by editing a file, and `plutos approve` needs an interactive terminal. The dashboard answer route needs the page's per-launch token and Claude Code's guard refuses commands that call it; a same-user process that deliberately reads the page can still get the token, so this is a speed bump and a trail, not a boundary |
 | Each agent grepping its way into a task | `plutos_context_for_task`: give it the task in a sentence and get the files to open first, ranked from the code graph, each with the reason it is listed and a confidence |
 | Skills scattered per AI tool | `plutos skills` and `plutos pack`: the skill folders every connected tool reads, and packs switched on per project into `.claude/skills` and `.agents/skills` at once |
-| Each AI copying the first quick design, AI defaults included | A project with a UI keeps its own design language in `docs/ai/DESIGN.md`: the brief asks the first AI to derive it from the project, later AIs follow it, and the `design-ui-direction` skill adds 15 start-of-project checks and a scored critique (a trial; it won 5 of 5 blind with/without comparisons). Projects without a UI see nothing new |
+| Each AI copying the first quick design, AI defaults included | A project with a UI keeps its own design language in `docs/ai/DESIGN.md`: the brief asks the first AI to derive it from the project, later AIs follow it, and the `design-ui-direction` skill adds 15 start-of-project checks and a scored critique (a trial: in the owner's blind picks of 2026-11-05 its look won 2 of 2 game screens and 1 of 8 app screens, so for apps it runs failure checks only and does not choose the look). Projects without a UI see nothing new |
 | Every project with different habits | The working agreement in every session brief carries the discipline (reuse before writing, surgical changes, evidence before claims) |
 
 ## Who it is for
@@ -207,7 +207,7 @@ whether a newer release exists, with a Download link.
 
 The dashboard has seven pages: Home, Board, Activity (usage over the last 7 days, and the work done
 and not done), Code map (build and explore the dependency graph, and the folder map), Costs (this
-project's token ledger and CodeBurn's machine-wide figures), Projects and Settings. Also there,
+project's token ledger for Claude Code and Codex), Projects and Settings. Also there,
 outside it: a blind
 council (`tools/council.mjs`: several AIs answer independently, then you decide), a source-backed
 research studio for your AI, and skill packs switched on per project with `plutos pack`. PLUT_OS ships no field's skills of its own: a domain lives in its own pack. Off until you
@@ -243,9 +243,10 @@ records already counts as common.
   `tools/council.mjs`, and automatic shared-context capture, which runs `claude -p` with Haiku
   after a compaction or session end once you switch it on for a project.
 - Approvals are tied to the exact content hash they were given for, expire, and run once;
-  `plutos approve` and `plutos reject` need an interactive terminal, so an AI with a shell on the
-  computer PLUT_OS runs on cannot answer its own ticket from a script. The dashboard's question card
-  is your browser action. What is not checked: a terminal an AI drives through a pseudo-terminal.
+  `plutos approve` and `plutos reject` need an interactive terminal. The dashboard's answer route
+  needs the per-launch token its page carries, and Claude Code's guard hook refuses commands that
+  call it. Not a boundary: a process running as you can read the page and get the token, or drive a
+  pseudo-terminal. It stops the one-line self-answer, not a deliberate bypass.
 - Checks, and the clients they work in today: the claim check sends a false "done" back once
   (Claude Code and Codex); the push gate stops a push of untested work (Claude Code, and every
   other client and the terminal through a git pre-push hook, which `git push --no-verify` skips); the

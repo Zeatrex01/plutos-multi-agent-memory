@@ -3,7 +3,7 @@
 // (owner decision d-a67637f8d490). Its shape, no suffix in two rows, the code map unchanged by it,
 // and the meta files recognised with their concepts.
 import assert from 'node:assert/strict';
-import { FILE_TYPES, CODE_MAP_EXTS, IMPORT_PARSED_EXTS, JS_IMPORT_EXTS, TASK_ONLY_EXTS, CODE_INDEX_EXTS, KNOWN_SUFFIXES, KNOWN_NAMES,
+import { FILE_TYPES, CODE_MAP_EXTS, IMPORT_PARSED_EXTS, JS_IMPORT_EXTS, TASK_ONLY_EXTS, TASK_DOC_EXTS, CODE_INDEX_EXTS, KNOWN_SUFFIXES, KNOWN_NAMES,
     conceptLocations, fileTypeOf } from '../lib/file-types.mjs';
 import { CODE_EXTS } from '../lib/graphify.mjs';
 import { TASK_EXTRA_EXTS, CONVENTIONAL } from '../lib/task-context.mjs';
@@ -65,6 +65,16 @@ check('the task index reads SQL, Dart, Scala, Elixir, Zig, web components and sh
     for (const e of ['.sql', '.dart', '.scala', '.ex', '.zig', '.vue', '.svelte', '.astro', '.gdshader', '.hlsl', '.glsl', '.wgsl', '.shader'])
         assert.ok(TASK_EXTRA_EXTS.includes(e), e);
     for (const e of TASK_EXTRA_EXTS) assert.ok(!CODE_EXTS.includes(e), `${e} is in both`);
+});
+check('Markdown task search is separate from code and full-text task-only files', () => {
+    assert.deepEqual(TASK_DOC_EXTS, ['.md', '.mdx']);
+    assert.equal(fileTypeOf('docs/guide.md').taskSearch, true);
+    assert.equal(fileTypeOf('notes.txt').taskSearch, false);
+    for (const ext of TASK_DOC_EXTS) {
+        assert.ok(!TASK_EXTRA_EXTS.includes(ext));
+        assert.ok(!CODE_EXTS.includes(ext));
+        assert.ok(!CODE_INDEX_EXTS.includes(ext));
+    }
 });
 check('meta files are recognised with their concepts', () => {
     const cases = {

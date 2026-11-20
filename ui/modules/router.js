@@ -10,7 +10,6 @@ import { fetchActivityPage } from './activity-page.js';
 import { fetchCodeIndex } from './codeindex.js';
 import { fetchGraphifyStudio } from './graphify.js';
 import { fetchUsage } from './usage.js';
-import { fetchCodeburn } from './codeburn.js';
 import { fetchConnect } from './connect.js';
 import { fetchStorageInfo } from './settings.js';
 import { showUpdateStatus } from './updates.js';
@@ -57,8 +56,8 @@ window.switchView = function(viewId, btn, fromHistory) {
     // The Code map page: the dependency graph and the folder map. Nothing here is fetched until
     // the page is opened (vis-network itself loads on first use, codeindex.js loadVis).
     if (viewId === 'codeindex') { fetchGraphifyStudio(); fetchCodeIndex(); }
-    // Costs: the project's ledger, then CodeBurn's last answer (it runs only from its button).
-    if (viewId === 'costs') { fetchUsage(); fetchCodeburn(); }
+    // Costs: the project's token ledger.
+    if (viewId === 'costs') fetchUsage();
     // Connect rows read config files off disk, so they are re-read on every visit.
     if (viewId === 'hub-view') { fetchWorkspaces(); fetchConnect(); }
     if (viewId === 'settings') { fetchStorageInfo(); showUpdateStatus(); }

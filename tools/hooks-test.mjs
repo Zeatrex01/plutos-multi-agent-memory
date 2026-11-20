@@ -40,6 +40,11 @@ try {
         for (const c of ['git checkout main', 'git checkout -b topic', 'git checkout -- src/a.js', 'git restore src/a.js',
             'git restore --staged .', 'git switch main', 'git stash', 'git stash pop', 'rmdir empty-dir']) assert.equal(guardRefusal(c), '', c);
     });
+    check('the guard refuses a request to the dashboard approvals route, and lets a mere mention through', () => {
+        for (const c of ['curl -X POST http://127.0.0.1:3040/api/approvals -d "{}"', 'curl -s localhost:3040/api/approvals/', 'Invoke-RestMethod -Method Post http://localhost:3040/api/approvals',
+            'node -e "fetch(\'http://127.0.0.1:3040/api/approvals\',{method:\'POST\'})"']) assert.ok(guardRefusal(c), c);
+        for (const c of ['grep -rn api/approvals lib', 'git commit -m "gate /api/approvals with a token"']) assert.equal(guardRefusal(c), '', c);
+    });
     check('Git Bash drive paths are read as Windows paths', () => {
         assert.equal(nativePath('/c/Users/pc', 'win32'), 'C:\\Users\\pc');
         assert.equal(nativePath('/c', 'win32'), 'C:\\');

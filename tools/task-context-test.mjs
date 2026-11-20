@@ -4,7 +4,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { taskContext, parseTask, resetTaskContextCache, shareExtraCap } from '../lib/task-context.mjs';
+import { taskContext, parseTask, resetTaskContextCache, shareExtraCap, buildTaskIndex, rankFiles } from '../lib/task-context.mjs';
 import { buildProjectDocGraph } from '../lib/graphify.mjs';
 import { toolAccess } from '../lib/tool-policy.mjs';
 
@@ -121,6 +121,32 @@ try {
     check('a file added after the scan is found on the next call', files('sendNotification fails', { now: Date.now() + 6_000 })[0] === 'lib/notify.mjs');
     resetTaskContextCache();
 
+    // read-only sessions get no write instruction; the default keeps it.
+    check('readOnly output has no board_update / doneWhen line', !/board_update|doneWhen/.test(taskContext(root, 'sendNotification fails', { readOnly: true }).text));
+    check('default output still carries the doneWhen line', /board_update doneWhen/.test(taskContext(root, 'sendNotification fails').text));
+
+    // Cache: hits do not slide the freshness window (fake clock via `now`).
+    resetTaskContextCache();
+    const t0 = Date.now();
+    files('warm the cache', { now: t0 });
+    write('lib/slide.mjs', "export function slideProbe() {}\n");
+    const fut = new Date(t0 + 120_000);
+    fs.utimesSync(path.join(root, 'lib/slide.mjs'), fut, fut);
+    check('inside 5 s the cached index is served', files('slideProbe fails', { now: t0 + 3_000 })[0] !== 'lib/slide.mjs');
+    check('a second hit at +4 s does not move the window', files('slideProbe fails', { now: t0 + 4_000 })[0] !== 'lib/slide.mjs');
+    check('at +6 s from the build the source check runs, though calls were under 5 s apart',
+        files('slideProbe fails', { now: t0 + 6_000 })[0] === 'lib/slide.mjs');
+    fs.rmSync(path.join(root, 'lib/slide.mjs'));
+    resetTaskContextCache();
+
+    // Cache: a deleted file is noticed (file count drops), and a verified entry still expires at MAX_AGE.
+    write('lib/doomed.mjs', "export function doomedProbe() {}\n");
+    const t1 = Date.now();
+    check('a file present at the scan is found', files('doomedProbe fails', { now: t1 })[0] === 'lib/doomed.mjs');
+    fs.rmSync(path.join(root, 'lib/doomed.mjs'));
+    check('a deleted file is gone from the next result', !files('doomedProbe fails', { now: t1 + 6_000 }).includes('lib/doomed.mjs'));
+    resetTaskContextCache();
+
     fs.rmSync(path.join(root, 'lib/notify.mjs'));
     check('it writes nothing into the project', JSON.stringify(list(root)) === JSON.stringify(before));
 
@@ -171,6 +197,74 @@ try {
 } finally {
     fs.rmSync(conv, { recursive: true, force: true });
 }
+// Named files bypass type indexing; document topics use only names and bounded headings.
+const docs = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-task-context-docs-'));
+const putDoc = (rel, body = '') => { fs.mkdirSync(path.dirname(path.join(docs, rel)), { recursive: true }); fs.writeFileSync(path.join(docs, rel), body); };
+putDoc('src/approval.mjs', 'export function approvalFlow() {}\n');
+for (let i = 0; i < 8; i++) putDoc(`src/unrelated${i}.mjs`, `export const value${i} = ${i};\n`);
+const codeBeforeDocuments = rankFiles(buildTaskIndex(docs), parseTask('approval expiry')).ranked;
+putDoc('docs/handoff/results/x.md', '# Approval expiry\nBodyonlyword is not a heading.\n');
+putDoc('docs/guide.md', 'Approval workflow\n=================\n');
+putDoc('docs/another.md', '## Approval checks\n');
+putDoc('docs/approval-reference.md', 'No heading needed for a filename match.\n');
+putDoc('README.md', '# Rootreadmetopic\n');
+putDoc('AGENTS.md', '# Rootagenttopic\n');
+putDoc('notes/outside.md', '# Outsidedoctopic\n');
+putDoc('docs/deep.md', `${'ordinary prose\n'.repeat(20_000)}# Beyondheadtopic\n`);
+putDoc('docs/sample.md', '```md\n# Fencedheadingtopic\n```\n');
+for (const rel of ['docs/handoff/archive/old.md', 'docs/ai/codeindex/map.md', 'docs/ai/obsidian/map.md',
+    'CHANGELOG.md', 'docs/CHANGELOG.md', 'graphify-out/report.md', 'node_modules/pkg/guide.md', '.hidden/guide.md'])
+    putDoc(rel, '# Approval excludedtopic\n');
+putDoc('notes/report.txt', 'Plain text report.\n');
+putDoc('assets/data.unusualsuffix', 'Arbitrary type.\n');
+putDoc('LICENSE', 'Extensionless file.\n');
+try {
+    const query = (task, opts) => taskContext(docs, task, opts);
+    const named = query('approvalFlow: inspect `./docs/handoff/results/x.md`');
+    check('an exact report path ranks first ahead of code', named.files[0]?.file === 'docs/handoff/results/x.md');
+    check('an exact report has the named reason', named.files[0]?.reasons.includes('named in the task'));
+    check('a backslash report path works', query('inspect .\\docs\\handoff\\results\\x.md').files[0]?.file === 'docs/handoff/results/x.md');
+    check('a nonexistent path is ignored', !query('inspect docs/missing.md').files.some(f => f.file === 'docs/missing.md'));
+    check('a nonexistent same-basename path does not expand to a document', !query('inspect docs/missing/x.md').files.some(f => f.file === 'docs/handoff/results/x.md'));
+    check('exact paths support text files', query('notes/report.txt').files[0]?.file === 'notes/report.txt');
+    check('exact paths support unknown types', query('assets/data.unusualsuffix').files[0]?.file === 'assets/data.unusualsuffix');
+    check('exact paths support extensionless files', query('`LICENSE`').files[0]?.file === 'LICENSE');
+    check('a named directory does not expand', query('`docs/handoff/results`').files.length === 0);
+    check('walker-excluded paths stay excluded even when named', query('node_modules/pkg/guide.md .hidden/guide.md graphify-out/report.md').files.length === 0);
+    check('an outside-project path is ignored', query('../escape.md').files.length === 0);
+    const topic = query('approval expiry');
+    const topicFiles = topic.files.map(f => f.file);
+    check('a heading topic returns a document below matching code', topicFiles[0] === 'src/approval.mjs'
+        && topicFiles.includes('docs/handoff/results/x.md'), topicFiles.join(', '));
+    check('topic documents are capped at two', topic.files.filter(f => /\.md$/.test(f.file)).length === 2);
+    check('adding documents preserves code scores and ordering', JSON.stringify(codeBeforeDocuments)
+        === JSON.stringify(rankFiles(buildTaskIndex(docs), parseTask('approval expiry')).ranked.filter(f => f.file.endsWith('.mjs'))));
+    check('a document filename is searchable', query('reference').files.some(f => f.file === 'docs/approval-reference.md'));
+    check('Setext headings are searchable', query('workflow').files.some(f => f.file === 'docs/guide.md'));
+    check('root README and AGENTS headings are searchable', query('rootreadmetopic').files[0]?.file === 'README.md'
+        && query('rootagenttopic').files[0]?.file === 'AGENTS.md');
+    check('document body text is not searchable', query('bodyonlyword').files.length === 0);
+    check('headings in fenced code are not searchable', query('fencedheadingtopic').files.length === 0);
+    check('headings beyond the bounded head are not searchable', query('beyondheadtopic').files.length === 0);
+    check('Markdown outside docs and root guidance stays out of topic search', query('outsidedoctopic').files.length === 0);
+    check('generated documents, archives and changelogs never appear in topic search', query('excludedtopic').files.length === 0);
+    const explicit = query('docs/handoff/results/x.md docs/guide.md docs/another.md');
+    check('explicit documents are exempt from the topic cap', ['docs/handoff/results/x.md', 'docs/guide.md', 'docs/another.md']
+        .every((f, i) => explicit.files[i]?.file === f));
+    check('documents count toward max_files', query('docs/handoff/results/x.md approval', { maxFiles: 1 }).files.length === 1);
+    const small = query('docs/handoff/results/x.md approval', { budgetTokens: 200 });
+    check('documents respect the output token budget', small.text.length / 4 <= 220 && /1\. docs\/handoff\/results\/x\.md/.test(small.text));
+    const t0 = Date.now();
+    putDoc('docs/new.md', '# Freshdocumenttopic\n');
+    const later = new Date(t0 + 60_000);
+    fs.utimesSync(path.join(docs, 'docs/new.md'), later, later);
+    check('new document headings invalidate the cache', query('freshdocumenttopic', { now: t0 + 6_000 }).files[0]?.file === 'docs/new.md');
+    fs.rmSync(path.join(docs, 'docs/handoff/results/x.md'));
+    check('a removed named document is ignored even with a cached index', !query('docs/handoff/results/x.md').files.some(f => f.file === 'docs/handoff/results/x.md'));
+} finally {
+    fs.rmSync(docs, { recursive: true, force: true });
+}
+
 // The task-only cap: 600 .vue files must not push out the one .sql file a data task anchors on.
 const many = fs.mkdtempSync(path.join(os.tmpdir(), 'plutos-task-context-cap-'));
 const putMany = (rel, body = '') => { fs.mkdirSync(path.dirname(path.join(many, rel)), { recursive: true }); fs.writeFileSync(path.join(many, rel), body); };

@@ -436,8 +436,8 @@ function answer(decision, { flags, positional }) {
 // Writes to shared memory outside session_end, and the answer to a ticket, are the owner's own
 // terminal actions (the review inbox of the canonical architecture, 2026-11-03 §6; O14): they need
 // a terminal a person is at, so an AI with a shell cannot rewrite memory or approve its own ticket
-// from a script. The dashboard's POST /api/approvals is the owner's browser action and is not
-// affected.
+// from a script. The dashboard's POST /api/approvals needs the page's per-launch token instead
+// (lib/auth.mjs approvalTokenOk): a speed bump, since a same-user process can still read the page.
 function requireTerminal(what, why = 'it rewrites shared memory, which is the owner\'s action') {
     if (!(process.stdin.isTTY && process.stdout.isTTY)) fail(`${what} needs an interactive terminal: ${why}.`);
 }

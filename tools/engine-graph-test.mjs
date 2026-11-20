@@ -43,6 +43,86 @@ write(godot, 'game/data/stats.tres', '[gd_resource type="Resource" format=3]\n\n
 
 const edgesOf = g => g.links.map(l => `${l.source} -> ${l.target} ${l.type}${l.kind ? ':' + l.kind : ''}`).sort();
 
+check('JSONC tsconfig aliases resolve Next.js imports and read the config once per scan', () => {
+    const dir = path.join(tmp, 'ts-alias');
+    write(dir, 'tsconfig.json', '{ // comment\n "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["./*"] } }, }');
+    write(dir, 'lib/server/orderPricing.ts', 'export function priceCartServerSide() {}\n');
+    write(dir, 'app/api/orders/route.ts', "import { priceCartServerSide } from '@/lib/server/orderPricing';\nimport React from 'react';\n");
+    write(dir, 'app/api/orders/sync/route.ts', "export { priceCartServerSide } from '@/lib/server/orderPricing';\n");
+    const reads = [];
+    const original = fs.openSync;
+    fs.openSync = function (file, ...args) { reads.push(String(file)); return original.call(this, file, ...args); };
+    let g;
+    try { g = scanCodeGraph(dir); } finally { fs.openSync = original; }
+    assert.deepEqual(edgesOf(g), [
+        'app/api/orders/route.ts -> lib/server/orderPricing.ts imports',
+        'app/api/orders/sync/route.ts -> lib/server/orderPricing.ts imports'
+    ]);
+    assert.equal(reads.filter(f => f === path.join(dir, 'tsconfig.json')).length, 1);
+});
+
+check('relative extends keeps inherited config origins across two levels', () => {
+    const dir = path.join(tmp, 'ts-extends');
+    write(dir, 'tsconfig.json', '{ "extends": "./config/middle" }');
+    write(dir, 'config/middle.json', '{ "extends": "./base.json" }');
+    write(dir, 'config/base.json', '{ /* base */ "compilerOptions": { "baseUrl": "../src", "paths": { "@/*": ["./*"] } } }');
+    write(dir, 'src/lib/value.ts', 'export const value = 1;\n');
+    write(dir, 'app.ts', "import { value } from '@/lib/value';\nimport 'lib/value';\n");
+    assert.deepEqual(edgesOf(scanCodeGraph(dir)), ['app.ts -> src/lib/value.ts imports']);
+});
+
+check('jsconfig aliases default to the config folder and use extension/index resolution', () => {
+    const dir = path.join(tmp, 'js-alias');
+    write(dir, 'jsconfig.json', '{ "compilerOptions": { "paths": { "@/*": ["src/*"], "@value": ["src/value"] } } }');
+    write(dir, 'src/value/index.js', 'export const value = 1;\n');
+    write(dir, 'app.js', "import '@value';\nimport '@/value';\n");
+    assert.deepEqual(edgesOf(scanCodeGraph(dir)), ['app.js -> src/value/index.js imports']);
+});
+
+check('alias targets use the first existing file; wildcard suffixes and specific patterns match', () => {
+    const dir = path.join(tmp, 'alias-targets');
+    write(dir, 'tsconfig.json', JSON.stringify({ compilerOptions: { baseUrl: '.', paths: {
+        '@/*': ['missing/*', 'src/*', 'other/*'], '@special/*': ['special/*'], '@suffix/*/item': ['src/*']
+    } } }));
+    for (const folder of ['src', 'other', 'special']) write(dir, `${folder}/value.ts`, 'export const value = 1;\n');
+    write(dir, 'src/special/value.ts', 'export const value = 2;\n');
+    write(dir, 'app.ts', "import '@/value';\nimport '@special/value';\nimport '@suffix/value/item';\nimport '@/absent';\nimport 'some-package';\n");
+    assert.deepEqual(edgesOf(scanCodeGraph(dir)), ['app.ts -> special/value.ts imports', 'app.ts -> src/value.ts imports']);
+});
+
+check('bare baseUrl imports resolve only existing project files and configs are reloaded each scan', () => {
+    const dir = path.join(tmp, 'base-url');
+    write(dir, 'tsconfig.json', '{ "compilerOptions": { "baseUrl": "src" } }');
+    write(dir, 'src/lib/value.ts', 'export const value = 1;\n');
+    write(dir, 'local.ts', 'export const local = 1;\n');
+    write(dir, 'app.ts', "import 'lib/value';\nimport 'missing-package';\nimport './local';\n");
+    assert.deepEqual(edgesOf(scanCodeGraph(dir)), ['app.ts -> local.ts imports', 'app.ts -> src/lib/value.ts imports']);
+    write(dir, 'tsconfig.json', '{}');
+    write(dir, 'app.ts', "import 'lib/value';\n");
+    assert.deepEqual(scanCodeGraph(dir).links, []);
+});
+
+check('extends cycles stop, child options override parents, and JSONC preserves string contents', () => {
+    const dir = path.join(tmp, 'alias-cycle');
+    write(dir, 'tsconfig.json', '{ "extends": "./base.json", "compilerOptions": { "paths": { "@/*": ["./src/*"], "@literal": ["./src/comma,]value"] } } }');
+    write(dir, 'base.json', '{ "extends": "./tsconfig.json", "compilerOptions": { "paths": { "@/*": ["./wrong/*"] } } }');
+    write(dir, 'src/value.ts', 'export const value = 1;\n');
+    write(dir, 'src/comma,]value.ts', 'export const literal = 1;\n');
+    write(dir, 'app.ts', "import '@/value';\nimport '@literal';\n");
+    assert.deepEqual(edgesOf(scanCodeGraph(dir)), ['app.ts -> src/comma,]value.ts imports', 'app.ts -> src/value.ts imports']);
+});
+
+check('tsconfig takes precedence over jsconfig and malformed configs keep relative imports working', () => {
+    const dir = path.join(tmp, 'bad-config');
+    write(dir, 'tsconfig.json', '{ invalid }');
+    write(dir, 'jsconfig.json', '{ "compilerOptions": { "paths": { "@/*": ["./*"] } } }');
+    write(dir, 'value.ts', 'export const value = 1;\n');
+    write(dir, 'app.ts', "import '@/value';\nimport './value';\n");
+    assert.deepEqual(edgesOf(scanCodeGraph(dir)), ['app.ts -> value.ts imports']);
+    write(dir, 'app.ts', "import '@/value';\n");
+    assert.deepEqual(scanCodeGraph(dir).links, []);
+});
+
 check('a Godot project: script and scene edges with their kinds, res:// from the folder holding project.godot', () => {
     const g = scanCodeGraph(godot);
     const ids = g.nodes.map(n => n.id).sort();

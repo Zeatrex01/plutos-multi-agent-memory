@@ -74,6 +74,8 @@ try {
         const list = await rpc('tools/list', {});
         const tools = list.result?.tools;
         if (!Array.isArray(tools)) throw new Error('tools/list returned no tools: ' + JSON.stringify(list).slice(0, 200));
+        // plutos_decide rejects over 500 characters; the definition must say so before the call.
+        if (!/500/.test(JSON.stringify(tools.find(t => t.name === 'plutos_decide') || {}))) throw new Error('plutos_decide definition does not state the 500-character limit');
         const brief = await rpc('tools/call', { name: 'session_start', arguments: { ai: 'TokenBudget' } });
         const briefText = (brief.result?.content || []).map(c => c.text || '').join('');
         if (!briefText || brief.result?.isError) throw new Error('session_start failed: ' + briefText.slice(0, 200));

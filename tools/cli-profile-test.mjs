@@ -141,9 +141,9 @@ try {
 
     const mcpUnknown = cli('mcp', 'add', 'nope', project);
     check('mcp add refuses an id that is not recommended', mcpUnknown.status === 1 && /Unknown MCP "nope"/.test(mcpUnknown.stderr), mcpUnknown.stderr);
-    const mcpThird = cli('mcp', 'add', 'codeburn', project);
+    const mcpThird = cli('mcp', 'add', 'context-mode', project);
     check('mcp add of a third-party server posts a board task and writes no config for it', mcpThird.status === 0 && /board task|already on the board/.test(mcpThird.stdout)
-        && !(fs.existsSync(path.join(project, '.mcp.json')) && fs.readFileSync(path.join(project, '.mcp.json'), 'utf8').includes('codeburn')), mcpThird.stdout + mcpThird.stderr);
+        && !(fs.existsSync(path.join(project, '.mcp.json')) && fs.readFileSync(path.join(project, '.mcp.json'), 'utf8').includes('context-mode')), mcpThird.stdout + mcpThird.stderr);
     const mcpOwn = cli('mcp', 'add', 'plutos', project);
     check('mcp add plutos wires PLUT_OS for Claude Code', mcpOwn.status === 0 && fs.readFileSync(path.join(project, '.mcp.json'), 'utf8').includes('plutos'), mcpOwn.stdout + mcpOwn.stderr);
 

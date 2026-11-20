@@ -91,6 +91,9 @@ try {
         assert.ok(bundled.some(p => p.name === '@modelcontextprotocol/sdk'), bundled.map(p => p.name).join(', '));
         assert.deepEqual(bundled.filter(p => !p.text).map(p => p.name), [], 'each bundled package keeps a licence file');
         const text = noticesText(bundled, { nodeLicense: null });
+        assert.doesNotMatch(text, /proprietary/i);
+        assert.match(text, /Apache-2\.0/);
+        assert.ok(SHIPPED_FILES.includes('NOTICE'), 'NOTICE ships beside LICENSE');
         for (const p of bundled) assert.ok(text.includes(`${p.name} ${p.version} (${p.license})`), p.name);
         assert.match(text, new RegExp(`Node\\.js ${process.version.replace(/\./g, '\\.')}[\\s\\S]*nodejs/node/blob/${process.version.replace(/\./g, '\\.')}/LICENSE`));
     });

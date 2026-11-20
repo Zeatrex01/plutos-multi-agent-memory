@@ -981,7 +981,7 @@ div.vis-tooltip { background: var(--bg-surface); color: var(--text-title); borde
     .map-side > .card { max-height: 320px; }
     .map-canvas-graph { height: 460px; }
 }
-/* ---------- Costs page: the token ledger (usage.js) and CodeBurn (codeburn.js) ---------- */
+/* ---------- Costs page: the token ledger (usage.js) ---------- */
 .usage-heads { display: flex; gap: 0.7rem; flex-wrap: wrap; }
 .usage-head { flex: 1 1 130px; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.15rem; }
 .usage-head b { color: var(--text-title); font-family: var(--font-mono); font-size: 1.15rem; }

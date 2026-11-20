@@ -170,7 +170,9 @@ try {
     check('old project evidence is rejected after dashboard switch', (await fetch(base + evidenceUrl)).status === 409);
     check('scoped approval reads reject another selected project', (await api(`/api/approvals?project=${encodeURIComponent(a)}`)).status === 409);
     check('a design-pick image of another project is not served', (await fetch(imageUrl('docs/ai/design-picks/home/A.png'))).status === 404);
-    check('cloned ticket cannot be answered under another project', (await api('/api/approvals', { projectRoot: a, id: ticket.id, decision: 'approved' })).status === 409
+    check('cloned ticket cannot be answered under another project', (await fetch(base + '/api/approvals', { method: 'POST', signal: AbortSignal.timeout(8000),
+        headers: { 'Content-Type': 'application/json', 'X-Plutos-Approval': (await (await fetch(base + '/')).text()).match(/name="plutos-approval-token" content="([0-9a-f]+)"/)?.[1] || '' },
+        body: JSON.stringify({ projectRoot: a, id: ticket.id, decision: 'approved' }) })).status === 409
         && JSON.parse(fs.readFileSync(path.join(b, '.plutos', 'approvals', ticket.id + '.json'), 'utf8')).status === 'pending');
 
     const local = path.join(a, '.plutos', 'local.json');

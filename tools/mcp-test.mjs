@@ -193,6 +193,8 @@ try {
     // The instructions map tasks to tools (feedback 2026-11-14 item 1) and promise no call-level
     // callers: plutos_code_lookup is file-level (lib/code-tools.mjs).
     const instructions = init.result?.instructions || '';
+    check('initialize instructions tell a client to call session_start first and follow the rules it returns',
+        /session_start first, then follow the rules it returns/.test(instructions), instructions);
     check('initialize instructions map tasks to tools, file-level only',
         /which files a task touches: plutos_context_for_task/.test(instructions)
         && /\(file-level\): plutos_code_lookup/.test(instructions) && /plutos_modules open research/.test(instructions)

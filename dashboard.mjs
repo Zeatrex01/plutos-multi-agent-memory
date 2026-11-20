@@ -17,7 +17,6 @@ import { MCP_REQUESTS, requestMcpSetup } from './lib/mcp-requests.mjs';
 import { buildStatusReport, renderReportMarkdown } from './lib/report.mjs';
 import { buildUsageReport } from './lib/usage-report.mjs';
 import { readTokenUsage } from './lib/usage.mjs';
-import { getProjectSpend, runProjectSpend } from './lib/spend.mjs';
 import { runCodeScan, readIndexShards } from './lib/codeindex.mjs';
 import { buildProjectDocGraph, getProjectDocGraphStatus, cleanProjectGraph, isGraphAutoRefresh, setGraphAutoRefresh, renderGraphPage, readFunctionCallers } from './lib/graphify.mjs';
 import { boardPathFor, agentBoardPathFor } from './lib/roadmap.mjs';
@@ -37,6 +36,7 @@ import { projectHooksStatus, setProjectHook, codexClaimCheckStatus } from './lib
 import { buildSnapshot } from './lib/snapshot.mjs';
 import { contextCaptureStatus } from './lib/context-capture.mjs';
 import * as auth from './lib/auth.mjs';
+import crypto from 'node:crypto';
 import { sameProjectPath } from './lib/project-binding.mjs';
 import { mutateMcpStatus, readMcpStatus, pruneMcpClients, projectMcpStatus } from './lib/mcp-status.mjs';
 import { managementRoutes, assertBoardProject, projectCoordinationRoot } from './lib/management-routes.mjs';
@@ -393,23 +393,14 @@ const routes = {
         sendJson(res, 200, buildUsageReport(coordinationRoot(), { days }));
     },
 
-    // The Costs page (ui/modules/usage.js, ui/modules/codeburn.js). The project's own token ledger:
-    // Claude Code's transcripts for the open project only, read off this machine, no network. Its
+    // The Costs page (ui/modules/usage.js). The project's own token ledger:
+    // Claude Code's transcripts and Codex's sessions for the open project only (?days= windows both
+    // tools, default 90: Claude by file mtime, Codex by date folder), read off this machine, no network. Its
     // own path because GET /api/usage above is the usage log the Activity page reads.
     'GET /api/token-usage': (req, res, url) => {
         const force = !!(url && url.searchParams && url.searchParams.get('force'));
-        sendJson(res, 200, readTokenUsage(workspaces.getActiveWorkspace(), { force, onlyProject: true }));
-    },
-    // CodeBurn's machine-wide figures: GET answers with the last run (or standby) and never
-    // starts CodeBurn; POST /api/spend/run is the owner's button. CodeBurn is run with npx --no,
-    // so a machine without it gets standby, never a download.
-    'GET /api/spend': (req, res, url) => {
-        const p = url && url.searchParams ? url.searchParams : null;
-        sendJson(res, 200, getProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
-    },
-    'POST /api/spend/run': (req, res, url) => {
-        const p = url && url.searchParams ? url.searchParams : null;
-        sendJson(res, 200, runProjectSpend('', p ? (p.get('range') || 'month') : 'month', p ? (p.get('from') || '') : ''));
+        const days = Math.max(1, Math.min(3650, Number(url && url.searchParams && url.searchParams.get('days')) || 90));
+        sendJson(res, 200, readTokenUsage(workspaces.getActiveWorkspace(), { force, onlyProject: true, sinceDays: days }));
     },
 
     // The Code map page (ui/modules/codeindex.js): the folder map read from the index shards, and
@@ -575,6 +566,10 @@ const routes = {
     // The owner's answer. Approve or reject, plus an optional note that reaches the agent as
     // "do this instead" — which is what keeps a rejection from costing a whole round trip.
     'POST /api/approvals': async (req, res) => {
+        if (!auth.approvalTokenOk(req, APPROVAL_TOKEN)) {
+            sendJson(res, 403, { success: false, message: 'Forbidden: answering a question needs the dashboard page\'s approval token. Owner: reload the dashboard page (the token changes each launch). An AI: relay the question to the owner instead of answering it yourself.' });
+            return;
+        }
         const data = await readJsonBody(req);
         try {
             const projectRoot = assertBoardProject(data);
@@ -933,6 +928,9 @@ function isLocalRequest(req) {
 // Where an approval answer came from (lib/approvals.mjs records it on the ticket and a T2
 // action is approvable at the computer only). Every request that reaches a route is the local
 // owner, so this reads 'local'; the rule stays as defence in depth should the gate ever change.
+// Random per launch, kept in memory only: never written to disk or logged.
+const APPROVAL_TOKEN = crypto.randomBytes(24).toString('hex');
+
 function answeredVia(req) {
     return auth.isLocalOwner(req) ? 'local' : 'remote';
 }
@@ -999,7 +997,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === '/' || url.pathname === '/index.html') {
-        serveStatic(res, path.join(__dirname, 'dashboard-ui.html'));
+        // The page carries this launch's approval token (see lib/auth.mjs approvalTokenOk).
+        let page = null;
+        try { page = fs.readFileSync(path.join(__dirname, 'dashboard-ui.html'), 'utf8'); } catch { /* 404 below */ }
+        if (page === null) { res.writeHead(404); res.end('Not Found'); return; }
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' });
+        res.end(page.replace('</head>', () => `<meta name="plutos-approval-token" content="${APPROVAL_TOKEN}"></head>`));
         return;
     }
     if (url.pathname.startsWith('/ui/')) {

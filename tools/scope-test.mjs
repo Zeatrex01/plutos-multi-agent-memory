@@ -52,6 +52,15 @@ Done means:
         assert.deepEqual(readScope(dir).queue, ['Pull from Unity', 'Write back with the same settings']);
         assert.match(scopeBriefLines(dir, NOW).join('\n'), /2 in the queue, next: Pull from Unity/);
     });
+    check('short and descriptive queue headings preserve long indented items with LF or CRLF', () => {
+        const jobs = [`Open-source release: ${'prepared work; '.repeat(40)}publish the core`, 'Run the acceptance test'];
+        for (const heading of ['In scope (the queue):', "In scope (the queue, in the owner's order; the first line is next; a finished item leaves this list for CHANGELOG.md):"]) {
+            for (const eol of ['\n', '\r\n']) {
+                page(['Status: ACTIVE', heading, `  1. ${jobs[0]}`, `    2. ${jobs[1]}`, 'Out of scope:', '  1. A different job', ''].join(eol));
+                assert.deepEqual(readScope(dir).queue, jobs, `${heading} with ${JSON.stringify(eol)}`);
+            }
+        }
+    });
     check('nothing parked: the line leaves the count out', () => {
         page(example.replace(/Later \(parking lot[^]*?Done means:/, 'Later: IDEAS.md\nDone means:'));
         assert.doesNotMatch(scopeBriefLines(dir, NOW).join('\n'), /parked in Later/);

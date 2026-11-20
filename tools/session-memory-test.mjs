@@ -15,6 +15,8 @@ const { recordArrival } = await import('../lib/presence.mjs');
 const { sessionBriefParts, sessionBrief, BRIEF_PART_CHARS, READ_ONLY_LINE, readOnlyLine, agreementSummary } = await import('../lib/session-brief.mjs');
 const { withPackServers, SESSION_END_LINE } = await import('../lib/continuity.mjs');
 const { assessContext, contextPathFor, QUARANTINE_DAYS, CLAIM_REVIEW_DAYS } = await import('../lib/context.mjs');
+const { recordDecisions, normalizeDecided } = await import('../lib/context.mjs');
+const { verifyMemory } = await import('../lib/memory.mjs');
 const RealDate = Date;
 const start = RealDate.parse('2026-09-08T08:00:00.000Z');
 let now = start;
@@ -264,14 +266,18 @@ try {
     await test('a Next that a later decision or board entry may have overtaken is marked', () => {
         const root = project('stale-next');
         recordSession(root, { ai: 'Claude', headline: 'Planned', next: 'Build the shop screen', decided: ['Keep the shop'] });
-        assert.doesNotMatch(buildBrief(root, { ai: 'Gemini' }), /Newer than this/, 'the session\'s own decision is not news');
+        const calm = buildBrief(root, { ai: 'Gemini' });
+        assert.doesNotMatch(calm, /Newer than this/, 'the session\'s own decision is not news');
+        assert(calm.split('\n').includes('- **Next:** Build the shop screen'), 'nothing newer: Next is unchanged');
         now += 60 * 60 * 1000;
         const later = recordDecision(root, 'Drop the shop for launch', { ai: 'Claude' });
         fs.mkdirSync(path.join(root, 'docs', 'handoff'), { recursive: true });
         fs.writeFileSync(path.join(root, 'docs', 'handoff', 'BOARD.md'), `# Board\n\n### Claude · IN_PROGRESS · Rework the menu\n- **Started:** ${new RealDate(now).toISOString()}\n- **Task:** menu\n\n### Claude · IN_PROGRESS · Old work\n- **Started:** ${new RealDate(start - 1000).toISOString()}\n`);
         const brief = buildBrief(root, { ai: 'Gemini' });
         const lines = brief.split('\n');
-        const at = lines.indexOf('- **Next:** Build the shop screen');
+        assert(!lines.includes('- **Next:** Build the shop screen'), 'with newer items the plain Next line is gone');
+        const at = lines.indexOf('- **Next (older than the newer items below; verify before following):** Build the shop screen');
+        assert(at >= 0, brief);
         assert(lines[at + 1].startsWith(`- **Newer than this:** decision ${later.id}; IN_PROGRESS on the board: "Rework the menu"`), brief);
         assert.doesNotMatch(lines[at + 1], /Old work/);
     });
@@ -582,6 +588,25 @@ try {
         assert.equal(live.length, CONTINUITY_BUDGETS.keepSessions);
         assert.equal(live.length + old.length, 8);
         assert.equal(new Set([...live, ...old].map(entry => entry.fields.Op)).size, 8);
+    });
+    await test('the brief marks an AI-recorded decision unverified, clears it on owner verify, and names what a decision replaced', () => {
+        const root = project('decision-author');
+        fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'src', 'limits.js'), 'MAX_UPLOAD_MB = 20\n');
+        const ai = recordDecision(root, 'Uploads stay at 20 MB for now', { ai: 'codex', origin: 'plutos_decide' });
+        const owner = recordDecision(root, 'Billing runs on Paddle', { ai: 'plutos decide', origin: 'decide-cli' });
+        let brief = buildBrief(root, { ai: 'Claude', full: true });
+        assert.ok(brief.includes(`(${ai.id}, recorded by codex, unverified)`), brief);
+        assert.ok(brief.includes(`(${owner.id})`) && !brief.includes(`${owner.id}, recorded by`), 'an owner-path decision carries no tag');
+        const swap = recordDecision(root, 'Uploads stay at 25 MB', { ai: 'gemini', origin: 'plutos_decide', supersedes: ai.id });
+        brief = buildBrief(root, { ai: 'Claude', full: true });
+        assert.ok(brief.includes(`(${swap.id}, recorded by gemini, unverified, replaces ${ai.id})`), brief);
+        // The owner verifies a record that cites a source: the tag goes away.
+        const sourced = normalizeDecided([{ decision: 'Uploads are capped in code', sources: [{ path: 'src/limits.js', evidence: 'MAX_UPLOAD_MB = 20' }] }]);
+        const rec = recordDecisions(root, sourced, { ai: 'codex', origin: 'plutos_decide' }).ids[0];
+        assert.ok(buildBrief(root, { ai: 'Claude', full: true }).includes(`(${rec}, recorded by codex, unverified)`));
+        assert.equal(verifyMemory(root, rec).verified, true);
+        assert.ok(buildBrief(root, { ai: 'Claude', full: true }).includes(`(${rec})`), 'verified reads as today');
     });
 } finally {
     globalThis.Date = RealDate;
